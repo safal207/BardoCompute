@@ -1,25 +1,17 @@
 # Stochastic Adaptability v0.1
 
-## Question
-
-How well does the capability trajectory remain correct when the environment and its observations become probabilistic, delayed, duplicated, stale, or out of order?
-
-**Stochastic** is used here in the systems sense: uncertainty/probability in the input process, not as a synonym for adaptation. The measured object is **adaptation under stochastic disturbance**.
+This evidence packet records two findings: correctness of capability adaptation under stochastic disturbance, and predictability-aware adaptation of the execution path itself.
 
 ## Semantic workload
 
-Seeded workload:
+Seeded 50,000-episode workload (`0xBADA55`):
 
-- episodes: 50,000
-- seed: `0xBADA55` (`12245589`)
-- total ticks: 364,305
-- second environment shocks: 15,053
-- premature evidence events: 18,672
-- stale evidence events from a previous epoch: 8,235
-- duplicate events: 24,172
-- episodes intentionally missing final evidence: 7,448
-
-The stochastic state adds an environment `epoch`, an `active_shock` marker, and whether the current epoch has observed the required `gap` before accepting `EVIDENCE_READY`.
+- 364,305 total ticks
+- 15,053 second environment shocks
+- 18,672 premature evidence events
+- 8,235 stale old-epoch evidence events
+- 24,172 duplicate events
+- 7,448 episodes intentionally missing final evidence
 
 | Model | Wrong-mode ticks | Unsafe Manifest ticks | Final false recoveries | Correct-mode rate |
 |---|---:|---:|---:|---:|
@@ -28,11 +20,7 @@ The stochastic state adds an environment `epoch`, an `active_shock` marker, and 
 | Conventional equal-information epoch-aware FSM | 0 | 0 | 0 | 1.000000 |
 | Bardo/Tao stochastic capability guard | 0 | 0 | 0 | 1.000000 |
 
-The 7,448 unresolved episodes are intentional: final evidence is withheld, so a correct system must remain unresolved rather than claim recovery.
-
-The Bardo/Tao guard is semantically equivalent to the conventional epoch-aware FSM. Latest Python runs put the reference Bardo/Tao object model about 1.10-1.12x slower than the independent conventional control. The useful result here is semantic correctness under disturbance, not Python object speed.
-
-## Stochastic adaptability metric
+The 7,448 unresolved episodes are intentional: missing final evidence must remain unresolved. Bardo/Tao and the conventional epoch-aware control are semantically equivalent. The Python reference object model is slightly slower; no terminology-based speed claim is made.
 
 ```text
 StochasticAdaptability = (
@@ -44,33 +32,20 @@ StochasticAdaptability = (
 )
 ```
 
-A scalar score would require justified workload-specific weights.
+## Predictability changes the preferred execution mechanism
 
-## Signal unpredictability changes the best execution path
+The deterministic capability cycle makes a 12-entry transition LUT roughly 2.2x slower than the branch FSM. Less predictable pregenerated inputs reverse that ordering.
 
-A perfectly regular capability trajectory previously made a tiny 12-entry transition LUT about 2.2-2.5x slower than a branch FSM. That result does not generalize to less predictable input.
+Native 12M-signal equal-semantic control, RNG excluded from timed loops:
 
-Native equal-semantic workload: 12,000,000 pregenerated signals, 8 repeats, RNG excluded from timed loops. The profile names are workload labels; this test does not compute formal Shannon entropy. The later online selector uses a conditional next-signal miss proxy.
+| Profile | Runner A LUT/branch | Runner B LUT/branch |
+|---|---:|---:|
+| 90% HOLD | 0.952x | 0.967x |
+| 60% HOLD | 0.324x | 0.326x |
+| balanced uniform | 0.277x | 0.279x |
+| shock-heavy, 10% HOLD | 0.286x | 0.288x |
 
-### Runner A
-
-| Profile | Branch s | LUT s | LUT / branch |
-|---|---:|---:|---:|
-| 90% HOLD | 0.018957 | 0.018040 | 0.952x |
-| 60% HOLD | 0.055747 | 0.018049 | 0.324x |
-| balanced uniform | 0.065133 | 0.018062 | 0.277x |
-| shock-heavy, 10% HOLD | 0.062984 | 0.018026 | 0.286x |
-
-### Runner B
-
-| Profile | Branch s | LUT s | LUT / branch |
-|---|---:|---:|---:|
-| 90% HOLD | 0.021318 | 0.020617 | 0.967x |
-| 60% HOLD | 0.063214 | 0.020604 | 0.326x |
-| balanced uniform | 0.073865 | 0.020604 | 0.279x |
-| shock-heavy, 10% HOLD | 0.072000 | 0.020741 | 0.288x |
-
-All branch/LUT checksums were identical.
+The benchmark does not claim formal Shannon entropy. The operational variable is trajectory predictability, estimated later with a conditional next-signal miss proxy.
 
 ```text
 execution_path = f(
@@ -88,44 +63,44 @@ Mixed workload:
 - 96 blocks × 131,072 transitions
 - 48 calm deterministic blocks
 - 48 stochastic uniform blocks
-- no block-type hint supplied to the selector
+- no block label given to the online selector
 - first 512 transitions per block are executed and observed inside the timed path
-- conditional next-signal predictability is estimated with a 4x4 transition matrix
-- selector chooses branch or LUT for the remainder
+- a 4x4 conditional transition matrix estimates predictability
+- branch or LUT is then selected for the remainder
 
-Controls: branch-only, LUT-only, future-informed oracle hybrid, and online adaptive selector. All paths have identical transition semantics and matching checksums.
+All branch-only, LUT-only, oracle-hybrid, and adaptive paths have identical transition semantics and matching checksums.
 
 ### Runner A
 
-Selector chose exactly 48 branch and 48 LUT blocks.
+The selector chose exactly 48 branch and 48 LUT blocks.
 
-- branch-only: `0.039382 s`
-- LUT-only: `0.022352 s`
-- oracle: `0.015300 s`
-- adaptive: `0.017175 s`
-- adaptive / branch: `0.436x` time (~2.29x faster)
-- adaptive / LUT: `0.768x` time (~1.30x faster)
-- adaptive / oracle: `1.123x` time (12.3% overhead)
+- branch-only `0.039382 s`
+- LUT-only `0.022352 s`
+- oracle `0.015300 s`
+- adaptive `0.017175 s`
+- adaptive/branch `0.436x` time (~2.29x faster)
+- adaptive/LUT `0.768x` time (~1.30x faster)
+- adaptive/oracle `1.123x` time (12.3% overhead)
 
 ### Runner B
 
-Selector again chose exactly 48 branch and 48 LUT blocks.
+Again 48 branch and 48 LUT blocks.
 
-- branch-only: `0.044883 s`
-- LUT-only: `0.025526 s`
-- oracle: `0.019471 s`
-- adaptive: `0.023866 s`
-- adaptive / branch: `0.532x` time (~1.88x faster)
-- adaptive / LUT: `0.935x` time (~1.07x faster)
-- adaptive / oracle: `1.226x` time (22.6% overhead)
+- branch-only `0.044883 s`
+- LUT-only `0.025526 s`
+- oracle `0.019471 s`
+- adaptive `0.023866 s`
+- adaptive/branch `0.532x` time (~1.88x faster)
+- adaptive/LUT `0.935x` time (~1.07x faster)
+- adaptive/oracle `1.226x` time (22.6% overhead)
 
 Observation cost is included in adaptive timings.
 
 ## Defensible result
 
-On this deliberately mixed long-regime workload, online predictability-aware selection beat **both static execution strategies on both hosted runners**, while remaining within 12-23% of an oracle that knows the future regime.
+On this deliberately mixed long-regime workload, online predictability-aware selection beat both static execution strategies on both hosted runners. The gain belongs to generic adaptive selection between equal-semantic branch and LUT implementations, not to Bardo/Tao naming.
 
-The speed gain belongs to generic adaptation between equal-semantic branch and LUT implementations. It is not evidence that Bardo/Tao terminology intrinsically accelerates a CPU.
+The architectural hypothesis is:
 
 ```text
 Trajectory(t-window...t)
@@ -133,21 +108,25 @@ Trajectory(t-window...t)
 Predictability
         ↓
 ExecutionMode(t+1)
-        |
         +-- predictable -> branch
         +-- stochastic  -> indexed/LUT
 ```
 
-This is the first BardoCompute experiment where adaptation changes **how computation is executed**, not only the semantic mode being represented.
+This is the first BardoCompute experiment where adaptation changes **how computation is executed** rather than only which semantic state is represented.
 
 ## Next falsification: adaptation timescale
+
+The current regime length is 131,072 transitions and the observation window is 512. The next experiment must sweep the ratio:
 
 ```text
 tau_environment / tau_adaptation
 ```
 
-The current 131,072-transition regimes are long relative to the 512-transition observation window. Sweep regime length 128 / 512 / 2K / 8K / 32K / 128K and observation window 32 / 64 / 128 / 512 to locate the break-even point.
+Planned regime lengths: 128 / 512 / 2K / 8K / 32K / 128K.
+Planned observation windows: 32 / 64 / 128 / 512.
+
+Measure classification accuracy, selector lag, and branch-only / LUT-only / oracle / adaptive runtime. If environment regimes become too short, adaptive execution should eventually lose its advantage.
 
 ## Scope boundary
 
-The stochastic `epoch` is currently side metadata. The 16-bit temporal-capability hot word does **not** contain an unbounded epoch counter. A bounded generation tag is a separate future experiment requiring explicit wraparound and replay controls.
+The stochastic `epoch` is currently side metadata. The existing 16-bit temporal-capability hot word does **not** include an unbounded epoch counter. A bounded generation tag requires a separate wraparound/replay experiment.
