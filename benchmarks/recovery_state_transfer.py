@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from statistics import median
 
-from bardocompute.capability import CapabilityMode, CapabilitySignal
+from bardocompute.capability import CapabilitySignal
 from bardocompute.hazard_cadence import HazardCadenceEvidence, evaluate_hazard_cadence
 from bardocompute.stochastic import (
     StochasticCapabilityState,
@@ -132,10 +132,11 @@ def process_authoritative_probe(
 
     if noise.stale_before and authority_epoch > 0:
         stale_epoch = max(0, authority_epoch - 1)
-        candidate = receipt(CapabilitySignal.EVIDENCE_READY, stale_epoch)
-        updated = step_stochastic_capability(state, candidate)
+        state = step_stochastic_capability(
+            state,
+            receipt(CapabilitySignal.EVIDENCE_READY, stale_epoch),
+        )
         stats.stale_receipts += 1
-        state = updated
 
     if authority_epoch > state.epoch:
         state = step_stochastic_capability(
@@ -143,10 +144,11 @@ def process_authoritative_probe(
             receipt(CapabilitySignal.ENVIRONMENT_CHANGE, authority_epoch),
         )
         if noise.premature_current:
-            candidate = receipt(CapabilitySignal.EVIDENCE_READY, authority_epoch)
-            updated = step_stochastic_capability(state, candidate)
+            state = step_stochastic_capability(
+                state,
+                receipt(CapabilitySignal.EVIDENCE_READY, authority_epoch),
+            )
             stats.premature_receipts += 1
-            state = updated
 
     if state.active_shock and state.epoch == authority_epoch:
         gap = receipt(CapabilitySignal.GAP_DETECTED, authority_epoch)
@@ -170,8 +172,10 @@ def process_authoritative_probe(
 
     # Replayed evidence in an unchanged, already-manifest epoch is harmless.
     if before == state and not state.active_shock and authority_epoch == state.epoch:
-        replay = receipt(CapabilitySignal.EVIDENCE_READY, authority_epoch)
-        state = step_stochastic_capability(state, replay)
+        state = step_stochastic_capability(
+            state,
+            receipt(CapabilitySignal.EVIDENCE_READY, authority_epoch),
+        )
         stats.duplicate_receipts += 1
 
     return state
@@ -210,8 +214,6 @@ def run(
             stats.loss += stale_regret
             stats.unsafe_ticks += 1
             stats.unresolved_ticks += int(state.active_shock)
-        if state.mode is CapabilityMode.MANIFEST and state.epoch != authority_epoch:
-            stats.false_recoveries += 1
 
         if step < next_probe:
             continue
@@ -229,6 +231,12 @@ def run(
             seed=seed,
             step=step,
             stats=stats,
+        )
+        # This is the provenance-guard metric: after an authoritative check and
+        # noisy receipt processing, did the local FSM falsely claim a completed
+        # recovery for an authority epoch it has not actually reached?
+        stats.false_recoveries += int(
+            not state.active_shock and state.epoch != authority_epoch
         )
 
         last_probe_epoch = authority_epoch
@@ -364,7 +372,7 @@ def main() -> None:
         "causes unsafe operation. Receipt provenance is independently protected by the "
         "existing epoch/order guard. A transfer win is meaningful only if adaptive "
         "cadence beats the strongest fixed cadence while the guard preserves zero false "
-        "recoveries under stale/replayed/premature evidence."
+        "recoveries after authoritative checks under stale/replayed/premature evidence."
     )
 
 
