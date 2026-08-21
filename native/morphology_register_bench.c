@@ -145,8 +145,8 @@ static uint64_t run_fixed_probe(
 
 /* Cheap drift sentinel: inspect only the last eight adjacent transitions in
  * the just-executed interval. The structured generator has successor hits=8;
- * uniform amorphous traffic has expected hits=2. One ambiguous observation
- * is HOLD: it does not mutate the morphology register. */
+ * uniform amorphous traffic has expected hits=2. An ambiguous observation is
+ * HOLD: it does not mutate the morphology register. */
 static int sentinel_vote(const uint8_t *signals, unsigned end) {
     if (end < SENTINEL_SAMPLES + 1u) return -1;
     unsigned hits = 0;
@@ -162,10 +162,12 @@ static int sentinel_vote(const uint8_t *signals, unsigned end) {
 
 typedef struct {
     unsigned switches;
+    unsigned true_detections;
+    unsigned false_switches;
     unsigned hold_votes;
     unsigned wrong_intervals;
     uint64_t detection_lag_signals;
-    uint64_t sentinel_signal_reads;
+    uint64_t sentinel_observed_signals;
 } RegisterStats;
 
 static uint64_t run_register(
@@ -178,11 +180,11 @@ static uint64_t run_register(
     uint8_t mode = 0;
     uint64_t checksum = 0;
     LocalMorphology reg = LOCAL_STRUCTURED;
-    RegisterStats s = {0, 0, 0, 0, 0};
+    RegisterStats s = {0, 0, 0, 0, 0, 0, 0};
 
     unsigned last_truth_change = 0u;
     LocalMorphology previous_truth = LOCAL_STRUCTURED;
-    int waiting_for_detection = 0;
+    int waiting_for_boundary_detection = 0;
 
     for (unsigned begin = 0; begin < N; begin += interval) {
         unsigned end = begin + interval;
@@ -193,7 +195,7 @@ static uint64_t run_register(
         if (truth != previous_truth) {
             last_truth_change = begin;
             previous_truth = truth;
-            waiting_for_detection = reg != truth;
+            waiting_for_boundary_detection = reg != truth;
         }
 
         if (reg != truth) s.wrong_intervals += 1u;
@@ -204,18 +206,24 @@ static uint64_t run_register(
         }
 
         int vote = sentinel_vote(signals, end);
-        s.sentinel_signal_reads += SENTINEL_SAMPLES + 1u;
+        s.sentinel_observed_signals += SENTINEL_SAMPLES + 1u;
         if (vote < 0) {
             s.hold_votes += 1u;
             continue;
         }
+
         LocalMorphology voted = (LocalMorphology)vote;
         if (voted != reg) {
             reg = voted;
             s.switches += 1u;
-            if (waiting_for_detection && reg == truth) {
-                s.detection_lag_signals += (uint64_t)(end - last_truth_change);
-                waiting_for_detection = 0;
+            if (reg == truth) {
+                if (waiting_for_boundary_detection) {
+                    s.true_detections += 1u;
+                    s.detection_lag_signals += (uint64_t)(end - last_truth_change);
+                    waiting_for_boundary_detection = 0;
+                }
+            } else {
+                s.false_switches += 1u;
             }
         }
     }
@@ -235,7 +243,7 @@ int main(void) {
     printf("signals=%u\n", N);
     printf("repeats=%d\n", REPEATS);
     printf("sentinel_samples=%u\n", SENTINEL_SAMPLES);
-    printf("coherence,interval,lut_seconds,fixed_probe_seconds,register_seconds,oracle_seconds,register_vs_lut,register_vs_fixed,oracle_vs_lut,switches,hold_votes,wrong_intervals,mean_detection_lag,sentinel_reads,correct\n");
+    printf("coherence,interval,lut_seconds,fixed_probe_seconds,register_seconds,oracle_seconds,register_vs_lut,register_vs_fixed,oracle_vs_lut,switches,true_detections,false_switches,hold_votes,wrong_intervals,wrong_interval_rate,mean_true_detection_lag,sentinel_observed_signals,correct\n");
 
     int all_correct = 1;
     for (unsigned ci = 0; ci < sizeof(coherences) / sizeof(coherences[0]); ++ci) {
@@ -274,22 +282,25 @@ int main(void) {
                 stats = rs;
             }
             double reg_avg = reg_total / REPEATS;
-            double mean_lag = stats.switches
-                ? (double)stats.detection_lag_signals / (double)stats.switches
+            unsigned intervals_total = (N + interval - 1u) / interval;
+            double wrong_rate = (double)stats.wrong_intervals / (double)intervals_total;
+            double mean_lag = stats.true_detections
+                ? (double)stats.detection_lag_signals / (double)stats.true_detections
                 : 0.0;
             printf(
-                "%u,%u,%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%u,%u,%u,%.2f,%llu,%s\n",
+                "%u,%u,%.6f,%.6f,%.6f,%.6f,%.3f,%.3f,%.3f,%u,%u,%u,%u,%u,%.6f,%.2f,%llu,%s\n",
                 coherence, interval, lut_avg, fixed_avg, reg_avg, oracle_avg,
                 reg_avg / lut_avg, reg_avg / fixed_avg, oracle_avg / lut_avg,
-                stats.switches, stats.hold_votes, stats.wrong_intervals, mean_lag,
-                (unsigned long long)stats.sentinel_signal_reads,
+                stats.switches, stats.true_detections, stats.false_switches,
+                stats.hold_votes, stats.wrong_intervals, wrong_rate, mean_lag,
+                (unsigned long long)stats.sentinel_observed_signals,
                 correct ? "true" : "false"
             );
         }
     }
 
     printf("all_correct=%s\n", all_correct ? "true" : "false");
-    printf("register_note=The morphology register is not given local region boundaries. It persists the last accepted local morphology and mutates only after a cheap sentinel produces a non-ambiguous vote; ambiguous evidence is HOLD. This tests whether retaining observer state is cheaper than re-probing every region.\n");
+    printf("register_note=The morphology register is not given local region boundaries. It persists the last accepted local morphology and mutates only after a cheap sentinel produces a non-ambiguous vote; ambiguous evidence is HOLD. True boundary detections and false switches are reported separately.\n");
     printf("control_note=All execution paths implement identical Manifest/Acquire/Adapt transition semantics; performance differences belong to observation/routing strategy.\n");
     printf("sink=%llu\n", (unsigned long long)sink);
     free(signals);
