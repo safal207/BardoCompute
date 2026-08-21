@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
 from .line import BardoLine, TransitionMode
 from .tao import EvidenceKind, OrientedTao, TaoDecision
@@ -25,6 +26,23 @@ def orientation_distance(left: EvidenceKind, right: EvidenceKind) -> int:
     return (int(left) ^ int(right)).bit_count()
 
 
+class TrajectoryPhase(str, Enum):
+    """Discrete motion class for one orientation step.
+
+    CONVERGING clears at least one missing evidence dimension and adds none.
+    REGRESSING adds at least one missing dimension and clears none.
+    REORIENTING clears and adds dimensions in the same step.
+    STALLED changes no orientation dimension.
+
+    These are engineering labels for the BardoCompute trajectory model.
+    """
+
+    CONVERGING = "converging"
+    STALLED = "stalled"
+    REGRESSING = "regressing"
+    REORIENTING = "reorienting"
+
+
 @dataclass(frozen=True, slots=True)
 class PhasePoint:
     """One observed transition/orientation state at a monotonic time tick."""
@@ -40,6 +58,83 @@ class PhasePoint:
     @property
     def center(self) -> tuple[int, int, int]:
         return orientation_vector(self.orientation.missing)
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseStep:
+    """One time-bounded movement of the center of orientation."""
+
+    previous: PhasePoint
+    current: PhasePoint
+
+    def __post_init__(self) -> None:
+        if self.current.tick <= self.previous.tick:
+            raise ValueError("phase step requires increasing ticks")
+
+    @property
+    def dt(self) -> int:
+        return self.current.tick - self.previous.tick
+
+    @property
+    def delta(self) -> tuple[int, int, int]:
+        """Signed coordinate movement; -1 resolves, +1 becomes missing."""
+
+        return tuple(
+            current - previous
+            for previous, current in zip(self.previous.center, self.current.center)
+        )  # type: ignore[return-value]
+
+    @property
+    def cleared_dimensions(self) -> int:
+        previous = int(self.previous.orientation.missing)
+        current = int(self.current.orientation.missing)
+        return ((previous & ~current) & 0x7).bit_count()
+
+    @property
+    def added_dimensions(self) -> int:
+        previous = int(self.previous.orientation.missing)
+        current = int(self.current.orientation.missing)
+        return ((~previous & current) & 0x7).bit_count()
+
+    @property
+    def movement(self) -> int:
+        return orientation_distance(
+            self.previous.orientation.missing,
+            self.current.orientation.missing,
+        )
+
+    @property
+    def movement_rate(self) -> float:
+        """Orientation-space distance travelled per tick."""
+
+        return self.movement / self.dt
+
+    @property
+    def convergence_rate(self) -> float:
+        """Signed evidence convergence per tick.
+
+        Positive means the center moves toward fewer missing dimensions.
+        Negative means evidence requirements regressed. Zero can mean either
+        a stall or a reorientation with equal dimensions cleared and added.
+        """
+
+        return (self.cleared_dimensions - self.added_dimensions) / self.dt
+
+    @property
+    def phase(self) -> TrajectoryPhase:
+        cleared = self.cleared_dimensions
+        added = self.added_dimensions
+        if cleared and added:
+            return TrajectoryPhase.REORIENTING
+        if cleared:
+            return TrajectoryPhase.CONVERGING
+        if added:
+            return TrajectoryPhase.REGRESSING
+        return TrajectoryPhase.STALLED
+
+    @property
+    def is_discontinuous(self) -> bool:
+        return self.current.line.mode is TransitionMode.DISCONTINUOUS
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,37 +209,35 @@ class PhaseTrajectory:
                 raise ValueError("trajectory ticks must be strictly increasing")
 
     @property
+    def steps(self) -> tuple[PhaseStep, ...]:
+        return tuple(
+            PhaseStep(previous, current)
+            for previous, current in zip(self.points, self.points[1:])
+        )
+
+    @property
+    def phase_sequence(self) -> tuple[TrajectoryPhase, ...]:
+        return tuple(step.phase for step in self.steps)
+
+    @property
     def duration(self) -> int:
         return self.points[-1].tick - self.points[0].tick
 
     @property
     def orientation_path_length(self) -> int:
-        return sum(
-            orientation_distance(previous.orientation.missing, current.orientation.missing)
-            for previous, current in zip(self.points, self.points[1:])
-        )
+        return sum(step.movement for step in self.steps)
 
     @property
     def resolved_dimensions(self) -> int:
-        total = 0
-        for previous, current in zip(self.points, self.points[1:]):
-            cleared = int(previous.orientation.missing) & ~int(current.orientation.missing)
-            total += (cleared & 0x7).bit_count()
-        return total
+        return sum(step.cleared_dimensions for step in self.steps)
 
     @property
     def regressions(self) -> int:
-        total = 0
-        for previous, current in zip(self.points, self.points[1:]):
-            added = ~int(previous.orientation.missing) & int(current.orientation.missing)
-            total += (added & 0x7).bit_count()
-        return total
+        return sum(step.added_dimensions for step in self.steps)
 
     @property
     def discontinuities(self) -> int:
-        return sum(
-            point.line.mode is TransitionMode.DISCONTINUOUS for point in self.points
-        )
+        return sum(point.line.mode is TransitionMode.DISCONTINUOUS for point in self.points)
 
     @property
     def terminal_tick(self) -> int | None:
@@ -162,9 +255,36 @@ class PhaseTrajectory:
 
     @property
     def orientation_velocity(self) -> float:
+        """Total orientation-space movement per time tick."""
+
         if self.duration == 0:
             return 0.0
         return self.orientation_path_length / self.duration
+
+    @property
+    def net_convergence_rate(self) -> float:
+        """Net reduction in missing dimensions per time tick."""
+
+        if self.duration == 0:
+            return 0.0
+        start = int(self.points[0].orientation.missing).bit_count()
+        end = int(self.points[-1].orientation.missing).bit_count()
+        return (start - end) / self.duration
+
+    @property
+    def convergence_rates(self) -> tuple[float, ...]:
+        return tuple(step.convergence_rate for step in self.steps)
+
+    @property
+    def convergence_rate_changes(self) -> tuple[float, ...]:
+        """Discrete changes in convergence rate between adjacent steps."""
+
+        rates = self.convergence_rates
+        return tuple(current - previous for previous, current in zip(rates, rates[1:]))
+
+    @property
+    def peak_movement_rate(self) -> float:
+        return max((step.movement_rate for step in self.steps), default=0.0)
 
     @property
     def is_monotone_convergent(self) -> bool:
