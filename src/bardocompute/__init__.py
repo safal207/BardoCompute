@@ -1,4 +1,5 @@
 from .line import BardoLine, LineState, TransitionMode
+from .phase_edge import PhaseEdgeSignature
 from .tao import (
     DecisionEvidence,
     EvidenceKind,
@@ -34,6 +35,7 @@ __all__ = [
     "decide_tao",
     "orient_tao",
     "KineticSignature",
+    "PhaseEdgeSignature",
     "PhasePoint",
     "PhaseStep",
     "PhaseTrajectory",
