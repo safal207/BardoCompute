@@ -1,5 +1,13 @@
 from .line import BardoLine, LineState, TransitionMode
-from .tao import DecisionEvidence, TaoDecision, decide_tao
+from .tao import (
+    DecisionEvidence,
+    EvidenceKind,
+    OrientedEvidence,
+    OrientedTao,
+    TaoDecision,
+    decide_tao,
+    orient_tao,
+)
 from .trigram import BardoTrigram
 
 __all__ = [
@@ -8,6 +16,10 @@ __all__ = [
     "TransitionMode",
     "BardoTrigram",
     "DecisionEvidence",
+    "EvidenceKind",
+    "OrientedEvidence",
+    "OrientedTao",
     "TaoDecision",
     "decide_tao",
+    "orient_tao",
 ]
