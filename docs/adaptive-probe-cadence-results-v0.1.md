@@ -135,7 +135,7 @@ Specifically, the v0.1 heuristic multiplies current calibration mismatch by a la
 
 ## Causal correction
 
-This falsification exposes three quantities that should not be collapsed:
+This falsification exposes four quantities that should not be collapsed:
 
 ```text
 TRUST       = how credible is the current calibration now?
