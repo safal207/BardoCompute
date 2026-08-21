@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 #define ACTIONS (8u * 1024u * 1024u)
@@ -105,7 +104,7 @@ static Result run_unguarded(const uint32_t *payload, size_t n) {
     return out;
 }
 
-static Result run_equal_load(
+static Result run_token_read_control(
     const uint32_t *payload,
     const uint32_t *tokens,
     size_t n
@@ -123,6 +122,33 @@ static Result run_equal_load(
     out.checksum = checksum;
     out.auxiliary = token_checksum;
     g_sink ^= checksum ^ token_checksum;
+    return out;
+}
+
+static Result run_classification_control(
+    const uint32_t *payload,
+    const uint32_t *tokens,
+    size_t n
+) {
+    Result out = {0};
+    double start = now_seconds();
+    uint64_t accepted = 0;
+    uint64_t rejected = 0;
+    uint64_t checksum = 0;
+
+    for (size_t i = 0; i < n; ++i) {
+        uint64_t valid = (uint64_t)(tokens[i] == AUTHORITY_EPOCH);
+        accepted += valid;
+        rejected += 1u - valid;
+        /* Classify authority exactly like the fence, but apply every payload. */
+        checksum += payload[i];
+    }
+
+    out.seconds = now_seconds() - start;
+    out.accepted = accepted;
+    out.rejected = rejected;
+    out.checksum = checksum;
+    g_sink ^= checksum ^ accepted ^ rejected;
     return out;
 }
 
@@ -198,29 +224,32 @@ static void report_profile(
     Profile profile
 ) {
     double unguarded_times[REPEATS];
-    double equal_load_times[REPEATS];
+    double token_read_times[REPEATS];
+    double classification_times[REPEATS];
     double branch_times[REPEATS];
     double branchless_times[REPEATS];
 
     Result reference_branch = {0};
-    Result reference_branchless = {0};
-    Result reference_equal_load = {0};
+    Result reference_token_read = {0};
+    Result reference_classification = {0};
 
     for (int repeat = 0; repeat < REPEATS; ++repeat) {
         Result unguarded = run_unguarded(payload, n);
-        Result equal_load = run_equal_load(payload, tokens, n);
+        Result token_read = run_token_read_control(payload, tokens, n);
+        Result classification = run_classification_control(payload, tokens, n);
         Result branch = run_fenced_branch(payload, tokens, n);
         Result branchless = run_fenced_branchless(payload, tokens, n);
 
         unguarded_times[repeat] = unguarded.seconds;
-        equal_load_times[repeat] = equal_load.seconds;
+        token_read_times[repeat] = token_read.seconds;
+        classification_times[repeat] = classification.seconds;
         branch_times[repeat] = branch.seconds;
         branchless_times[repeat] = branchless.seconds;
 
         if (repeat == 0) {
             reference_branch = branch;
-            reference_branchless = branchless;
-            reference_equal_load = equal_load;
+            reference_token_read = token_read;
+            reference_classification = classification;
         }
 
         if (
@@ -228,36 +257,44 @@ static void report_profile(
             branch.rejected != branchless.rejected ||
             branch.checksum != branchless.checksum
         ) {
-            fprintf(stderr, "semantic mismatch for profile %s\n", profile.name);
+            fprintf(stderr, "fenced semantic mismatch for profile %s\n", profile.name);
             exit(3);
+        }
+
+        if (
+            classification.accepted != branch.accepted ||
+            classification.rejected != branch.rejected
+        ) {
+            fprintf(stderr, "classification mismatch for profile %s\n", profile.name);
+            exit(4);
         }
     }
 
     double unguarded = median_seconds(unguarded_times);
-    double equal_load = median_seconds(equal_load_times);
+    double token_read = median_seconds(token_read_times);
+    double classification = median_seconds(classification_times);
     double branch = median_seconds(branch_times);
     double branchless = median_seconds(branchless_times);
-
-    double ns_per_action_unguarded = unguarded * 1e9 / (double)n;
-    double ns_per_action_equal_load = equal_load * 1e9 / (double)n;
-    double ns_per_action_branch = branch * 1e9 / (double)n;
-    double ns_per_action_branchless = branchless * 1e9 / (double)n;
 
     printf("\n[%s]\n", profile.name);
     printf("actions=%zu\n", n);
     printf("accepted=%" PRIu64 "\n", reference_branch.accepted);
     printf("rejected=%" PRIu64 "\n", reference_branch.rejected);
     printf("fenced_semantic_equivalence=true\n");
-    printf("equal_load_token_checksum=%" PRIu64 "\n", reference_equal_load.auxiliary);
-    printf("unguarded_ns_per_action=%.3f\n", ns_per_action_unguarded);
-    printf("equal_load_ns_per_action=%.3f\n", ns_per_action_equal_load);
-    printf("branch_fence_ns_per_action=%.3f\n", ns_per_action_branch);
-    printf("branchless_fence_ns_per_action=%.3f\n", ns_per_action_branchless);
-    printf("equal_load_vs_unguarded=%.3fx\n", equal_load / unguarded);
-    printf("branch_fence_vs_equal_load=%.3fx\n", branch / equal_load);
-    printf("branchless_fence_vs_equal_load=%.3fx\n", branchless / equal_load);
-    printf("branch_vs_branchless=%.3fx\n", branch / branchless);
+    printf("classification_count_equivalence=true\n");
+    printf("token_read_checksum=%" PRIu64 "\n", reference_token_read.auxiliary);
+    printf("classification_apply_all_checksum=%" PRIu64 "\n", reference_classification.checksum);
     printf("accepted_checksum=%" PRIu64 "\n", reference_branch.checksum);
+    printf("unguarded_ns_per_action=%.3f\n", unguarded * 1e9 / (double)n);
+    printf("token_read_ns_per_action=%.3f\n", token_read * 1e9 / (double)n);
+    printf("classification_ns_per_action=%.3f\n", classification * 1e9 / (double)n);
+    printf("branch_fence_ns_per_action=%.3f\n", branch * 1e9 / (double)n);
+    printf("branchless_fence_ns_per_action=%.3f\n", branchless * 1e9 / (double)n);
+    printf("token_read_vs_unguarded=%.3fx\n", token_read / unguarded);
+    printf("classification_vs_token_read=%.3fx\n", classification / token_read);
+    printf("branch_fence_vs_classification=%.3fx\n", branch / classification);
+    printf("branchless_fence_vs_classification=%.3fx\n", branchless / classification);
+    printf("branch_vs_branchless=%.3fx\n", branch / branchless);
 }
 
 int main(void) {
@@ -273,13 +310,14 @@ int main(void) {
 
     build_payload(payload, n);
 
-    printf("benchmark=local_action_fence_cost_v0.10\n");
+    printf("benchmark=local_action_fence_cost_v0.10b\n");
     printf("actions=%zu\n", n);
     printf("repeats=%d\n", REPEATS);
     printf("authority_epoch=%u\n", AUTHORITY_EPOCH);
     printf("scope=local_in_memory_epoch_token_enforcement_only\n");
     printf("not_modeled=network,consensus,replication,lease_acquisition,remote_storage\n");
-    printf("primary_runtime_comparator=equal_load_control\n");
+    printf("primary_runtime_comparator=classification_control\n");
+    printf("pilot_note=v0.10a_equal_load_control_retained_as_nonfinal_due_arithmetic_work_confound\n");
 
     for (size_t p = 0; p < sizeof(PROFILES) / sizeof(PROFILES[0]); ++p) {
         build_tokens(tokens, n, PROFILES[p]);
@@ -288,13 +326,13 @@ int main(void) {
 
     printf("\nvolatile_sink=%" PRIu64 "\n", g_sink);
     printf(
-        "interpretation=Unguarded is the absolute local floor but does not read "
-        "authority tokens. Equal-load reads the same payload and token streams "
-        "without enforcing authority, so fence/equal-load ratios better isolate "
-        "comparison, rejection accounting, branch predictability, and compiler "
-        "effects. Branch and branchless fenced paths must produce identical "
-        "accepted/rejected counts and accepted checksums. This microbenchmark "
-        "does not estimate distributed-system validation latency.\n"
+        "interpretation=Token-read remains a memory-access control, while the new "
+        "classification control performs the same authority equality test and the "
+        "same accepted/rejected accounting as the fence but still applies every "
+        "payload. Fence/classification therefore better isolates the cost of "
+        "enforcement and branch predictability. Branch and branchless fenced paths "
+        "must remain semantically identical. This local microbenchmark does not "
+        "estimate distributed-system validation latency.\n"
     );
 
     free(payload);
