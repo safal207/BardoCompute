@@ -235,3 +235,7 @@ The next benchmark should therefore sweep:
 - branch-only / LUT-only / oracle / adaptive execution time
 
 This will locate the actual break-even boundary for self-adapting execution.
+
+## Scope boundary
+
+The stochastic `epoch` is currently side metadata in the reference model. The existing 16-bit temporal-capability hot word does **not** yet contain an unbounded epoch counter. Packing a bounded generation tag into hot state is a separate future experiment and must include wraparound/replay controls before it can be treated as equivalent.
