@@ -226,13 +226,50 @@ The benchmark asks a narrow question:
 
 > Can a persistence/payback gate avoid economically losing switches while retaining useful long-lived adaptations?
 
-A positive result supports the payback hypothesis only on the constructed workload. It does not establish a universal adaptive law.
+### First measured result
+
+Hosted CI (`CI #310`, Python 3.12; the benchmark step also passed on Python 3.11):
+
+```text
+episodes=200000
+reactive_utility=33,942,816
+orientation_utility=39,527,296
+oracle_utility=40,429,504
+orientation_vs_reactive=1.165x
+oracle_gap_closed=0.861
+
+reactive_switches=200,000
+orientation_switches=82,528
+oracle_switches=93,679
+
+reactive_losing_switches=87,305
+orientation_losing_switches=0
+
+KEEP=113,890
+HOLD=3,582
+ADAPT=82,528
+```
+
+The orientation layer did not receive true future persistence. It received a seeded noisy estimate in the range `0.55x–1.45x` of the remaining regime lifetime, with fixed confidence `0.85`.
+
+On this constructed workload the payback gate:
+
+- improves realized utility by **16.5%** over change-reactive adaptation;
+- removes all switches that were net-negative relative to simply paying the observation cost and keeping the current mode;
+- closes **86.1%** of the reactive-to-oracle utility gap;
+- reduces switching from `200,000` to `82,528` episodes.
+
+This is evidence for a narrow proposition only:
+
+> **Detected change is not sufficient authority to adapt; persistence and adaptation cost can materially change the optimal action.**
+
+It does not establish the full Living Process principle. The current workload gives the estimator a noisy value derived from true future lifetime, so the next experiment must replace that with an online persistence estimate derived only from past/present observations.
 
 ## Research trajectory
 
 ```text
-1. Prove payback gate against reactive adaptation.
-2. Replace fixed persistence with online run-length / dwell estimation.
+1. DONE: payback gate vs reactive adaptation.
+2. Replace future-derived persistence with online run-length / dwell estimation.
 3. Attack with random regime lengths and gradual drift.
 4. Add false bursts and distribution shift.
 5. Sweep observation / adaptation costs.
