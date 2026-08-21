@@ -287,6 +287,17 @@ Without future leakage, sweep distribution-shift severity and measure:
 
 A new adaptive method only survives if its improvement remains after the cost of drift detection and recalibration is included.
 
+## Current bottleneck
+
+```text
+Bardo / trajectory tells us that history matters.
+Observer zoom tells us that scale matters.
+Observation payback tells us that knowledge has a price.
+Distribution shift now tells us that the price estimate itself has a lifetime.
+```
+
+The next core state is therefore not another symbolic layer. It is an explicit, testable notion of **calibration freshness / trust**.
+
 ## Scientific boundary
 
 The result is a decision-theoretic engineering finding in constructed workloads. It does not establish a universal law of observation, intelligence, cognition, finance, biology, or physics.
