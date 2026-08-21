@@ -28,6 +28,7 @@ jobs:
       - run: python benchmarks/trajectory_guard.py
       - run: python benchmarks/trajectory_kinetics.py
       - run: python benchmarks/phase_edge_trajectory.py
+      - run: python benchmarks/phase_age.py
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_bench.c -o native/bardo_bench
       - run: ./native/bardo_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_tao_bench.c -o native/bardo_tao_bench
@@ -38,6 +39,8 @@ jobs:
       - run: ./native/kinetic_signature_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/phase_edge_bench.c -o native/phase_edge_bench
       - run: ./native/phase_edge_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/phase_age_bench.c -o native/phase_age_bench
+      - run: ./native/phase_age_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/trigram_bench.c -o native/trigram_bench
       - run: ./native/trigram_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic -fopt-info-vec-optimized native/group_control.c -o native/group_control
