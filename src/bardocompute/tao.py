@@ -55,9 +55,9 @@ class OrientedTao:
     missing: EvidenceKind = EvidenceKind.NONE
 
     def __post_init__(self) -> None:
-        if self.decision is TaoDecision.DEFER and self.missing is EvidenceKind.NONE:
+        if self.decision is TaoDecision.DEFER and self.missing == EvidenceKind.NONE:
             raise ValueError("deferred Tao state must identify missing evidence")
-        if self.decision is not TaoDecision.DEFER and self.missing is not EvidenceKind.NONE:
+        if self.decision is not TaoDecision.DEFER and self.missing != EvidenceKind.NONE:
             raise ValueError("terminal Tao state cannot carry missing evidence")
 
     def waits_for(self, kind: EvidenceKind) -> bool:
@@ -102,6 +102,6 @@ def orient_tao(evidence: OrientedEvidence) -> OrientedTao:
     if evidence.outcome is None:
         missing |= EvidenceKind.OUTCOME
 
-    if missing is not EvidenceKind.NONE:
+    if missing != EvidenceKind.NONE:
         return OrientedTao(TaoDecision.DEFER, missing)
     return OrientedTao(TaoDecision.ALLOW)
