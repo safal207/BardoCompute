@@ -3,6 +3,7 @@ import pytest
 from bardocompute.line import BardoLine, TransitionMode
 from bardocompute.tao import EvidenceKind, OrientedTao, TaoDecision
 from bardocompute.trajectory import (
+    KineticSignature,
     PhasePoint,
     PhaseTrajectory,
     TrajectoryPhase,
@@ -55,9 +56,12 @@ def test_monotone_trajectory_measures_convergence_and_rates() -> None:
     assert not trajectory.signature.had_regression
     assert not trajectory.signature.had_discontinuity
     assert trajectory.signature.current_missing == EvidenceKind.NONE
+    assert trajectory.kinetic_signature.current_phase is TrajectoryPhase.CONVERGING
+    assert trajectory.kinetic_signature.current_missing == EvidenceKind.NONE
+    assert trajectory.kinetic_signature.code <= 0xFF
 
 
-def test_regression_and_discontinuity_are_visible_in_path_and_signature() -> None:
+def test_regression_and_discontinuity_are_visible_in_path_and_signatures() -> None:
     trajectory = PhaseTrajectory(
         (
             PhasePoint(0, BardoLine.stable(0), defer(EvidenceKind.OUTCOME)),
@@ -89,6 +93,13 @@ def test_regression_and_discontinuity_are_visible_in_path_and_signature() -> Non
     assert trajectory.signature.current_missing == EvidenceKind.NONE
     assert trajectory.signature.code <= 0xFF
 
+    kinetic = trajectory.kinetic_signature
+    assert kinetic.had_regression
+    assert kinetic.had_discontinuity
+    assert kinetic.current_phase is TrajectoryPhase.CONVERGING
+    assert kinetic.current_missing == EvidenceKind.NONE
+    assert kinetic.code <= 0xFF
+
 
 def test_reorientation_and_stall_are_distinct_from_net_zero_motion() -> None:
     trajectory = PhaseTrajectory(
@@ -109,6 +120,54 @@ def test_reorientation_and_stall_are_distinct_from_net_zero_motion() -> None:
     assert second.delta == (0, 0, 0)
     assert second.movement == 0
     assert second.convergence_rate == 0.0
+
+    kinetic = trajectory.kinetic_signature
+    assert kinetic.current_phase is TrajectoryPhase.STALLED
+    assert kinetic.had_regression
+
+
+def test_kinetic_signature_has_no_phase_until_first_step() -> None:
+    point = PhasePoint(0, BardoLine.stable(0), defer(EvidenceKind.OUTCOME))
+    signature = KineticSignature.initial(point)
+    assert not signature.has_phase
+    assert signature.current_phase is None
+    assert signature.current_missing is EvidenceKind.OUTCOME
+
+
+def test_kinetic_signature_encodes_all_four_current_phases() -> None:
+    current = PhasePoint(2, BardoLine.stable(0), defer(EvidenceKind.OUTCOME))
+    fixtures = (
+        (
+            PhasePoint(
+                0,
+                BardoLine.stable(0),
+                defer(EvidenceKind.AUTHORITY | EvidenceKind.OUTCOME),
+            ),
+            TrajectoryPhase.CONVERGING,
+        ),
+        (
+            PhasePoint(0, BardoLine.stable(0), defer(EvidenceKind.OUTCOME)),
+            TrajectoryPhase.STALLED,
+        ),
+        (
+            PhasePoint(0, BardoLine.stable(0), OrientedTao(TaoDecision.ALLOW)),
+            TrajectoryPhase.REGRESSING,
+        ),
+        (
+            PhasePoint(0, BardoLine.stable(0), defer(EvidenceKind.AUTHORITY)),
+            TrajectoryPhase.REORIENTING,
+        ),
+    )
+
+    for previous, expected_phase in fixtures:
+        signature = KineticSignature.initial(previous).advance(current)
+        assert signature.has_phase
+        assert signature.current_phase is expected_phase
+        assert signature.current_missing is EvidenceKind.OUTCOME
+        assert signature.had_regression is (
+            expected_phase in (TrajectoryPhase.REGRESSING, TrajectoryPhase.REORIENTING)
+        )
+        assert signature.code <= 0xFF
 
 
 def test_ticks_must_be_strictly_increasing() -> None:
