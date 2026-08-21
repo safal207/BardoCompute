@@ -6,6 +6,12 @@
 #include <stdlib.h>
 #include <time.h>
 
+#if defined(BARDO_TUNE_DENSE) && defined(__GNUC__) && !defined(__clang__)
+#define BARDO_DENSE_SCAN_ATTR __attribute__((noinline, optimize("no-tree-vectorize")))
+#else
+#define BARDO_DENSE_SCAN_ATTR
+#endif
+
 static const uint8_t line_code_from_digit[6] = {
     0x0u, /* stable 0 */
     0x2u, /* 0->1 continuous */
@@ -59,6 +65,7 @@ static uint64_t scan_u16(
     return allowed;
 }
 
+BARDO_DENSE_SCAN_ATTR
 static uint64_t scan_u8(
     const uint8_t *groups,
     size_t n,
@@ -176,6 +183,11 @@ int main(void) {
     printf("repeats=%u\n", repeats);
     printf("valid_group_states=216\n");
     printf("measurement_order=alternating_after_warmup\n");
+#if defined(BARDO_TUNE_DENSE)
+    printf("dense_scan_tuning=no-tree-vectorize\n");
+#else
+    printf("dense_scan_tuning=compiler-default\n");
+#endif
     printf("correct=true\n\n");
 
     printf("[generic packed group: three 3-bit line codes in uint16_t]\n");
