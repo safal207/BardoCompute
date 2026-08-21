@@ -1,3 +1,13 @@
+from .capability import (
+    Capability,
+    CapabilityMode,
+    CapabilityProfile,
+    CapabilityTemporalState16,
+    Carrier,
+    capability_bit,
+    choose_capability_mode,
+    flow_profile,
+)
 from .line import BardoLine, LineState, TransitionMode
 from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
@@ -29,6 +39,14 @@ __all__ = [
     "LineState",
     "TransitionMode",
     "BardoTrigram",
+    "Capability",
+    "CapabilityMode",
+    "CapabilityProfile",
+    "CapabilityTemporalState16",
+    "Carrier",
+    "capability_bit",
+    "choose_capability_mode",
+    "flow_profile",
     "DecisionEvidence",
     "EvidenceKind",
     "OrientedEvidence",
