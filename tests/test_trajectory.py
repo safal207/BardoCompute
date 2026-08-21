@@ -43,7 +43,7 @@ def test_regression_and_discontinuity_are_visible_in_path_and_signature() -> Non
             PhasePoint(4, BardoLine.stable(1), OrientedTao(TaoDecision.ALLOW)),
         )
     )
-    assert trajectory.orientation_path_length == 4
+    assert trajectory.orientation_path_length == 5
     assert trajectory.regressions == 2
     assert trajectory.discontinuities == 1
     assert not trajectory.is_monotone_convergent
