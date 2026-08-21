@@ -33,6 +33,8 @@ jobs:
       - run: ./native/bardo_tao_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/temporal_signature_bench.c -o native/temporal_signature_bench
       - run: ./native/temporal_signature_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/kinetic_signature_bench.c -o native/kinetic_signature_bench
+      - run: ./native/kinetic_signature_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/trigram_bench.c -o native/trigram_bench
       - run: ./native/trigram_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic -fopt-info-vec-optimized native/group_control.c -o native/group_control
