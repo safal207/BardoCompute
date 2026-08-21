@@ -18,15 +18,15 @@ def make_step(kind: int) -> PhaseStep:
     current = PhasePoint(2, BardoLine.stable(0), defer(EvidenceKind.OUTCOME))
 
     if kind == 0:  # converging: authority was also missing, then resolved
-        previous_mask = EvidenceKind.AUTHORITY | EvidenceKind.OUTCOME
+        previous_orientation = defer(EvidenceKind.AUTHORITY | EvidenceKind.OUTCOME)
     elif kind == 1:  # stalled: nothing changed
-        previous_mask = EvidenceKind.OUTCOME
+        previous_orientation = defer(EvidenceKind.OUTCOME)
     elif kind == 2:  # regressing: outcome had been settled, then became missing
-        previous_mask = EvidenceKind.NONE
+        previous_orientation = OrientedTao(TaoDecision.ALLOW)
     else:  # reorienting: authority settled while outcome became missing
-        previous_mask = EvidenceKind.AUTHORITY
+        previous_orientation = defer(EvidenceKind.AUTHORITY)
 
-    previous = PhasePoint(0, BardoLine.stable(0), defer(previous_mask))
+    previous = PhasePoint(0, BardoLine.stable(0), previous_orientation)
     return PhaseStep(previous, current)
 
 
