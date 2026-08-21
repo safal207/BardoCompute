@@ -55,6 +55,8 @@ jobs:
       - run: ./native/capability_entropy_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/adaptive_execution_bench.c -o native/adaptive_execution_bench
       - run: ./native/adaptive_execution_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/atman_observer_bench.c -o native/atman_observer_bench
+      - run: ./native/atman_observer_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/policy_lut_sweep.c -o native/policy_lut_sweep
       - run: ./native/policy_lut_sweep
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/trigram_bench.c -o native/trigram_bench
