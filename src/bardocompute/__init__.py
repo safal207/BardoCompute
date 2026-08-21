@@ -1,4 +1,5 @@
 from .line import BardoLine, LineState, TransitionMode
+from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
 from .tao import (
     DecisionEvidence,
@@ -35,6 +36,8 @@ __all__ = [
     "decide_tao",
     "orient_tao",
     "KineticSignature",
+    "PhaseAgeBucket",
+    "PhaseAgeSignature",
     "PhaseEdgeSignature",
     "PhasePoint",
     "PhaseStep",
@@ -44,4 +47,5 @@ __all__ = [
     "classify_orientation_phase",
     "orientation_distance",
     "orientation_vector",
+    "phase_age_bucket",
 ]
