@@ -30,3 +30,5 @@ jobs:
       - run: ./native/group_control
       - run: cc -O3 -fno-tree-vectorize -std=c11 -Wall -Wextra -pedantic native/group_control.c -o native/group_control_scalar
       - run: ./native/group_control_scalar
+      - run: cc -O3 -DBARDO_TUNE_DENSE -std=c11 -Wall -Wextra -pedantic native/group_control.c -o native/group_control_tuned
+      - run: ./native/group_control_tuned
