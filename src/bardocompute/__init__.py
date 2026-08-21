@@ -8,6 +8,12 @@ from .tao import (
     decide_tao,
     orient_tao,
 )
+from .trajectory import (
+    PhasePoint,
+    PhaseTrajectory,
+    orientation_distance,
+    orientation_vector,
+)
 from .trigram import BardoTrigram
 
 __all__ = [
@@ -22,4 +28,8 @@ __all__ = [
     "TaoDecision",
     "decide_tao",
     "orient_tao",
+    "PhasePoint",
+    "PhaseTrajectory",
+    "orientation_distance",
+    "orientation_vector",
 ]
