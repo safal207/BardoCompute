@@ -70,8 +70,8 @@ per-action revalidation + fence
   authoritative refresh before every action
   action/epoch/replay fence
 
-fixed sparse + fence
-  fixed intervals 8 / 32 / 128
+fixed fenced candidates
+  1 / 8 / 16 / 32 / 64 / 128
 
 EWMA + fence
 rolling + fence
