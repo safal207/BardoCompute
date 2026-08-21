@@ -2,7 +2,7 @@
 
 ## Status
 
-Pre-registered falsification. Results are not filled in until the hosted workflow completes.
+Pre-registered falsification completed successfully on two independent hosted Python runners (3.11 and 3.12). The result is retained as semantic evidence; no runtime/speed claim is made.
 
 ## Question
 
@@ -21,7 +21,7 @@ world B: authority changed immediately after the previous probe
 
 A client that continues acting in both worlds cannot guarantee zero stale effects in world B.
 
-The proposed separation is:
+The tested separation is:
 
 ```text
 observation cadence -> freshness / efficiency / recovery latency
@@ -36,97 +36,127 @@ This is analogous to fencing-token patterns in distributed systems: stale holder
 
 `benchmarks/action_boundary_fencing.py`
 
+## Hosted result
+
+Both Python 3.11 and 3.12 reproduced the same deterministic metrics.
+
 ### Adversarial indistinguishability control
 
-For fixed cadence:
-
 ```text
-1 / 8 / 32 / 128
+interval=1   pull_unsafe_accepted=0   fenced_unsafe_accepted=0
+interval=8   pull_unsafe_accepted=7   fenced_unsafe_accepted=0
+interval=32  pull_unsafe_accepted=31  fenced_unsafe_accepted=0
+interval=128 pull_unsafe_accepted=127 fenced_unsafe_accepted=0
 ```
 
-place an authority restart one tick after a probe and allow the client to act until the next probe.
-
-Expected lower bound:
-
-```text
-pull-only unsafe accepted = interval - 1
-fenced unsafe accepted    = 0
-```
-
-for every interval greater than one.
+A restart immediately after the previous probe creates the expected `interval - 1` stale-action window for every pull-only cadence greater than one tick. The resource fence rejects every stale action in the same window.
 
 ### Stochastic recovery transfer
 
-Reuse the v0.6 authority-epoch recovery environments and existing noisy receipt/provenance path.
-
-Compare identical observer schedules under:
+16 seeded recovery environments, with the existing noisy receipt/provenance path and hidden future restart boundaries:
 
 ```text
-pull-only execution
-resource-side epoch fencing
+fixed8:
+  median_probes=4463.5
+  median_pull_unsafe_accepted=1042.0
+  median_fenced_unsafe_accepted=0.0
+  median_fence_rejections=1042.0
+  median_fenced_acceptance_rate=.965382
+
+fixed32:
+  median_probes=1115.5
+  median_pull_unsafe_accepted=4021.0
+  median_fenced_unsafe_accepted=0.0
+  median_fence_rejections=4021.0
+  median_fenced_acceptance_rate=.878804
+
+EWMA:
+  median_probes=2870.0
+  median_pull_unsafe_accepted=1377.0
+  median_fenced_unsafe_accepted=0.0
+  median_fence_rejections=1377.0
+  median_fenced_acceptance_rate=.955224
+
+rolling:
+  median_probes=3530.5
+  median_pull_unsafe_accepted=1196.0
+  median_fenced_unsafe_accepted=0.0
+  median_fence_rejections=1196.0
+  median_fenced_acceptance_rate=.962175
 ```
-
-Policies:
-
-```text
-fixed 8
-fixed 32
-EWMA hazard cadence
-rolling hazard cadence
-```
-
-The middle existing cost profile is used only to instantiate the already-frozen adaptive cadence formula. v0.8 does not optimize or report a new scalar utility objective.
 
 ## Anti-cheat invariants
 
 For pull and fenced variants of the same policy/environment:
 
 ```text
-probe count must be identical
-stale-attempt count must be identical
-local-HOLD count must be identical
+probe count identical
+stale-attempt count identical
+local-HOLD count identical
 ```
 
-The fence may alter only whether an already-attempted stale action is applied or rejected.
+The benchmark asserts these equalities. Both hosted runs passed them.
 
-The benchmark asserts these equalities.
+The fence therefore did not gain safety by observing authority more often or by receiving future restart information. It changed only the fate of an already-attempted stale action:
 
-## Predeclared acceptance criteria
+```text
+pull-only -> stale effect applied
+fenced    -> stale effect rejected
+```
 
-v0.8 supports the semantic separation only if all conditions hold:
+## Acceptance criteria result
 
-1. every adversarial cadence `d > 1` has a non-zero pull-only stale-action window;
-2. fenced adversarial unsafe accepted actions are zero;
-3. stochastic fenced unsafe accepted actions are zero for every tested policy/seed;
-4. pull-only stochastic execution exhibits stale accepted actions for at least one non-per-action policy;
-5. observer schedules remain identical by assertion;
-6. fence rejections and action acceptance are reported as availability cost rather than hidden;
-7. no runtime/speed advantage is claimed from this semantic benchmark.
+All predeclared semantic acceptance conditions passed:
+
+1. every adversarial cadence `d > 1` had a non-zero pull-only stale-action window;
+2. fenced adversarial unsafe accepted actions were zero;
+3. stochastic fenced unsafe accepted actions were zero for every tested policy/seed;
+4. pull-only stochastic execution produced stale accepted actions for all non-per-action policies;
+5. observer schedules remained identical by assertion;
+6. fence rejections and acceptance rates were reported explicitly;
+7. no runtime/speed advantage is claimed.
+
+## What the result means
+
+The result supports a stronger architectural separation than v0.7:
+
+```text
+OBSERVATION answers: when do I learn that authority changed?
+FENCING answers:     may this action take effect under current authority?
+```
+
+Tightening observation cadence shrinks the stale-information window but cannot remove the underlying observability boundary unless every action is preceded by authoritative observation.
+
+Resource-side authority fencing removes stale **effects** without requiring the observer itself to become per-action.
+
+The cost is moved into availability/backpressure: stale attempts become explicit rejections, and a slower observer causes more rejected work.
 
 ## Boundary assumption
 
 The protected resource must possess or synchronously validate the current authoritative epoch/token at the action boundary.
 
-If the resource itself does not know the authoritative ordering, resource-side fencing cannot provide the claimed guarantee. In that case the system must add a stronger authority/coordination mechanism or weaken the guarantee.
+If the resource itself does not know authoritative ordering, resource-side fencing cannot provide the claimed guarantee. The system must then add a stronger authority/coordination mechanism or weaken the guarantee.
 
-## What would falsify the direction
+This is not a claim that a client-generated random token or a lease alone is sufficient.
 
-The direction is rejected or narrowed if:
+## Current causal consequence
 
-- stale effects remain possible after correct resource-side epoch comparison;
-- the fence changes observation information or secretly probes authority more often;
-- zero unsafe effects require hidden future restart information;
-- availability/rejection cost makes the mechanism unusable for the target workload;
-- the resource cannot maintain authoritative monotonic ordering in the intended deployment model.
+Safety should no longer be paid for by adding a larger scalar penalty to stale actions in the observation optimizer.
 
-## Next step only if semantics survive
-
-Measure the actual cost of boundary enforcement and rejected stale work against:
+Instead:
 
 ```text
-per-action authoritative probing
-fixed sparse probing
-adaptive sparse probing + fence
+hard action admissibility -> resource fence
+freshness / availability  -> observation cadence
+recovery correctness      -> epoch/order provenance guard
 ```
 
-with equal-information native controls.
+These are causally distinct responsibilities.
+
+## Next falsification
+
+`docs/safe-observation-economics-v0.9.md` freezes the next question before evaluation:
+
+> after unsafe effects are structurally fenced to zero, can adaptive observation still beat the strongest fixed cadence on probe cost plus unavailable/rejected work?
+
+Only if that survives should native runtime cost of the fence be benchmarked.
