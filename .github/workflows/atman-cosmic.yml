@@ -11,6 +11,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/atman_cosmic_observer_bench.c -o native/atman_cosmic_observer_bench
       - run: ./native/atman_cosmic_observer_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/cosmic_hybrid_sweep.c -o native/cosmic_hybrid_sweep
+      - run: ./native/cosmic_hybrid_sweep
 
   native-benchmark-b:
     runs-on: ubuntu-latest
@@ -18,3 +20,5 @@ jobs:
       - uses: actions/checkout@v4
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/atman_cosmic_observer_bench.c -o native/atman_cosmic_observer_bench
       - run: ./native/atman_cosmic_observer_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/cosmic_hybrid_sweep.c -o native/cosmic_hybrid_sweep
+      - run: ./native/cosmic_hybrid_sweep
