@@ -36,12 +36,7 @@ The 7,448 unresolved episodes are intentional: the workload withholds the final 
 
 The Bardo/Tao guard is semantically equivalent to the conventional epoch-aware FSM. This is not evidence of unique mathematics or a speed advantage from terminology.
 
-Python execution was slightly slower for the Bardo/Tao reference object model:
-
-- Python 3.11: guard / conventional = `1.145x`
-- Python 3.12: guard / conventional = `1.192x`
-
-The semantic result is therefore the useful result here.
+Latest Python runs showed the reference Bardo/Tao object model about 1.10-1.12x slower than the independently implemented conventional epoch-aware control. The semantic result, not Python object speed, is the useful result here.
 
 ## Stochastic adaptability is a vector
 
@@ -61,7 +56,7 @@ A future scalar score may be useful for dashboards, but only after weights and f
 
 ## Signal entropy changes the best execution path
 
-The deterministic recovery benchmark previously showed a tiny 12-entry transition LUT about `2.2x` slower than a branch FSM on a perfectly regular capability trajectory.
+The deterministic recovery benchmark showed a tiny 12-entry transition LUT about 2.2-2.5x slower than a branch FSM on a perfectly regular capability trajectory.
 
 That result does **not** generalize to stochastic signals.
 
@@ -77,19 +72,19 @@ Native benchmark:
 
 | Signal profile | Branch s | LUT s | LUT / branch | Interpretation |
 |---|---:|---:|---:|---|
-| 90% HOLD | 0.023848 | 0.023307 | 0.977x | near parity |
-| 60% HOLD | 0.074660 | 0.023274 | 0.312x | LUT ~3.21x faster |
-| balanced uniform | 0.083664 | 0.023244 | 0.278x | LUT ~3.60x faster |
-| shock-heavy, 10% HOLD | 0.081040 | 0.023223 | 0.287x | LUT ~3.49x faster |
+| 90% HOLD | 0.018957 | 0.018040 | 0.952x | near parity |
+| 60% HOLD | 0.055747 | 0.018049 | 0.324x | LUT ~3.09x faster |
+| balanced uniform | 0.065133 | 0.018062 | 0.277x | LUT ~3.61x faster |
+| shock-heavy, 10% HOLD | 0.062984 | 0.018026 | 0.286x | LUT ~3.49x faster |
 
 ### Runner B
 
 | Signal profile | Branch s | LUT s | LUT / branch | Interpretation |
 |---|---:|---:|---:|---|
-| 90% HOLD | 0.020788 | 0.020627 | 0.992x | near parity |
-| 60% HOLD | 0.063448 | 0.020605 | 0.325x | LUT ~3.08x faster |
-| balanced uniform | 0.075284 | 0.020609 | 0.274x | LUT ~3.65x faster |
-| shock-heavy, 10% HOLD | 0.073960 | 0.020633 | 0.279x | LUT ~3.58x faster |
+| 90% HOLD | 0.021318 | 0.020617 | 0.967x | near parity |
+| 60% HOLD | 0.063214 | 0.020604 | 0.326x | LUT ~3.07x faster |
+| balanced uniform | 0.073865 | 0.020604 | 0.279x | LUT ~3.58x faster |
+| shock-heavy, 10% HOLD | 0.072000 | 0.020741 | 0.288x | LUT ~3.47x faster |
 
 All branch/LUT checksums were identical.
 
@@ -104,37 +99,137 @@ large/high-dimensional graph -> LUT
 
 is too simple.
 
-The evidence now supports a stronger hypothesis:
+The evidence supports a stronger hypothesis:
 
 ```text
 execution_path = f(
     graph_complexity,
-    signal_predictability / entropy,
+    trajectory_predictability / conditional entropy,
     table_locality,
 )
 ```
 
 For this workload:
 
-- small + highly predictable transition stream: branch and LUT are competitive, and the deterministic cyclic case strongly favored branches;
-- small + stochastic/high-entropy transition stream: the 12-entry LUT is roughly 3x to 3.6x faster;
-- high-dimensional compact temporal policy: a state-indexed LUT is already favorable while its table remains within the measured locality budget.
+- small + highly predictable transition stream: branches can dominate, as in the deterministic capability cycle;
+- low-entropy random stream: branch and LUT approach parity;
+- small + medium/high stochastic transition stream: the 12-entry LUT is roughly 3x to 3.6x faster;
+- high-dimensional compact temporal policy: a state-indexed LUT is favorable while its table remains within the measured locality budget.
 
-## New processor hypothesis
+## Online adaptive execution
 
-The execution mechanism itself may be adaptive:
+A mixed native workload tests whether the machine can adapt **how it executes**, not only what capability mode it is in.
+
+Workload:
+
+- 12,582,912 transitions
+- 96 blocks of 131,072 transitions
+- 48 calm deterministic blocks
+- 48 stochastic uniform blocks
+- no block-type hint is given to the online selector
+- the first 512 signals of each block are executed and observed inside the timed path
+- the selector estimates conditional next-signal unpredictability from a 4x4 transition matrix
+- then selects branch or LUT execution for the rest of the block
+
+Controls:
+
+1. branch-only
+2. LUT-only
+3. oracle hybrid that knows the block type in advance
+4. online adaptive selector
+
+All four paths have identical transition semantics and matching checksums.
+
+### Runner A
+
+The online selector classified exactly 48 blocks as branch and 48 as LUT.
+
+| Path | Seconds | Relative to adaptive |
+|---|---:|---:|
+| branch-only | 0.039382 | adaptive is ~2.29x faster |
+| LUT-only | 0.022352 | adaptive is ~1.30x faster |
+| oracle hybrid | 0.015300 | adaptive costs 12.3% over oracle |
+| online adaptive | 0.017175 | baseline |
+
+Ratios reported by the benchmark:
 
 ```text
-low transition entropy  -> predictable branch path
-high transition entropy -> branchless/indexed path
+adaptive_vs_branch = 0.436x
+adaptive_vs_lut    = 0.768x
+adaptive_vs_oracle = 1.123x
 ```
 
-This is not yet proven end-to-end because the cost of estimating entropy and switching modes has not been included.
+### Runner B
 
-The next falsification test is therefore a mixed workload with calm and stochastic phases, comparing:
+Again, the selector classified exactly 48 branch blocks and 48 LUT blocks.
 
-1. branch-only,
-2. LUT-only,
-3. online adaptive branch/LUT selection.
+| Path | Seconds | Relative to adaptive |
+|---|---:|---:|
+| branch-only | 0.044883 | adaptive is ~1.88x faster |
+| LUT-only | 0.025526 | adaptive is ~1.07x faster |
+| oracle hybrid | 0.019471 | adaptive costs 22.6% over oracle |
+| online adaptive | 0.023866 | baseline |
 
-The adaptive selector only wins if its measurement and switching overhead are smaller than the losses avoided in each regime.
+Ratios:
+
+```text
+adaptive_vs_branch = 0.532x
+adaptive_vs_lut    = 0.935x
+adaptive_vs_oracle = 1.226x
+```
+
+The observation/sampling cost is included in the adaptive timings.
+
+### Defensible result
+
+On this deliberately mixed long-regime workload, online predictability-aware execution selection beat **both static execution strategies on both hosted runners**, while remaining within 12-23% of an oracle that knows the future regime.
+
+The gain belongs to generic adaptive selection between equal-semantic branch and LUT implementations. It is not evidence that Bardo/Tao terminology intrinsically accelerates a CPU.
+
+What the Bardo/Tao/trajectory model contributes is the architectural question and the explicit variable being adapted: the execution mechanism becomes a function of observed transition trajectory.
+
+## Current processor hypothesis
+
+```text
+trajectory observation
+        ↓
+conditional predictability / stochasticity
+        ↓
+execution orientation
+        |
+        +-- predictable trajectory -> branch path
+        |
+        +-- stochastic trajectory  -> indexed/LUT path
+        ↓
+next capability state
+```
+
+Equivalently:
+
+```text
+ExecutionMode(t+1) = F(Trajectory(t-window...t))
+```
+
+This is the first BardoCompute experiment where **adaptation itself changes the execution path** rather than merely changing a semantic state label.
+
+## Important limitation: adaptation timescale
+
+The mixed workload uses long 131,072-transition regimes and a 512-transition observation window. That gives the selector ample time to amortize its observation cost.
+
+The next falsification target is the ratio between environment timescale and adaptation timescale:
+
+```text
+tau_environment / tau_adaptation
+```
+
+If the environment changes faster than the selector can observe and react, adaptive execution should lose its advantage.
+
+The next benchmark should therefore sweep:
+
+- regime length: 128 / 512 / 2K / 8K / 32K / 128K transitions
+- observation window: 32 / 64 / 128 / 512 transitions
+- classification accuracy
+- selector lag
+- branch-only / LUT-only / oracle / adaptive execution time
+
+This will locate the actual break-even boundary for self-adapting execution.
