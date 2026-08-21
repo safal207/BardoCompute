@@ -1,0 +1,13 @@
+name: ATMAN Cosmic Observer Benchmark
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/atman_cosmic_observer_bench.c -o native/atman_cosmic_observer_bench
+      - run: ./native/atman_cosmic_observer_bench
