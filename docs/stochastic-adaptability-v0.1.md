@@ -92,17 +92,6 @@ All branch/LUT checksums were identical.
 
 ## Revised execution hypothesis
 
-The earlier rule
-
-```text
-small graph -> branch FSM
-large/high-dimensional graph -> LUT
-```
-
-is too simple.
-
-The evidence supports a stronger hypothesis:
-
 ```text
 execution_path = f(
     graph_complexity,
@@ -113,7 +102,7 @@ execution_path = f(
 
 For this workload:
 
-- small + highly predictable transition stream: branches can dominate, as in the deterministic capability cycle;
+- small + highly predictable transition stream: branches can dominate;
 - highly skewed stochastic stream: branch and LUT approach parity;
 - small + less predictable stochastic transition stream: the 12-entry LUT is roughly 3x to 3.6x faster;
 - high-dimensional compact temporal policy: a state-indexed LUT is favorable while its table remains within the measured locality budget.
@@ -133,52 +122,31 @@ Workload:
 - the selector estimates conditional next-signal unpredictability from a 4x4 transition matrix
 - then selects branch or LUT execution for the rest of the block
 
-Controls:
-
-1. branch-only
-2. LUT-only
-3. oracle hybrid that knows the block type in advance
-4. online adaptive selector
-
-All four paths have identical transition semantics and matching checksums.
+Controls: branch-only, LUT-only, oracle hybrid, and online adaptive selector. All four paths have identical transition semantics and matching checksums.
 
 ### Runner A
 
 The online selector classified exactly 48 blocks as branch and 48 as LUT.
 
-| Path | Seconds | Relative to adaptive |
-|---|---:|---:|
-| branch-only | 0.039382 | adaptive is ~2.29x faster |
-| LUT-only | 0.022352 | adaptive is ~1.30x faster |
-| oracle hybrid | 0.015300 | adaptive costs 12.3% over oracle |
-| online adaptive | 0.017175 | baseline |
-
-Ratios reported by the benchmark:
-
-```text
-adaptive_vs_branch = 0.436x
-adaptive_vs_lut    = 0.768x
-adaptive_vs_oracle = 1.123x
-```
+- branch-only: `0.039382 s`
+- LUT-only: `0.022352 s`
+- oracle hybrid: `0.015300 s`
+- online adaptive: `0.017175 s`
+- adaptive vs branch: `0.436x` time (~2.29x faster)
+- adaptive vs LUT: `0.768x` time (~1.30x faster)
+- adaptive vs oracle: `1.123x` time (12.3% overhead)
 
 ### Runner B
 
 Again, the selector classified exactly 48 branch blocks and 48 LUT blocks.
 
-| Path | Seconds | Relative to adaptive |
-|---|---:|---:|
-| branch-only | 0.044883 | adaptive is ~1.88x faster |
-| LUT-only | 0.025526 | adaptive is ~1.07x faster |
-| oracle hybrid | 0.019471 | adaptive costs 22.6% over oracle |
-| online adaptive | 0.023866 | baseline |
-
-Ratios:
-
-```text
-adaptive_vs_branch = 0.532x
-adaptive_vs_lut    = 0.935x
-adaptive_vs_oracle = 1.226x
-```
+- branch-only: `0.044883 s`
+- LUT-only: `0.025526 s`
+- oracle hybrid: `0.019471 s`
+- online adaptive: `0.023866 s`
+- adaptive vs branch: `0.532x` time (~1.88x faster)
+- adaptive vs LUT: `0.935x` time (~1.07x faster)
+- adaptive vs oracle: `1.226x` time (22.6% overhead)
 
 The observation/sampling cost is included in the adaptive timings.
 
@@ -218,7 +186,7 @@ This is the first BardoCompute experiment where **adaptation itself changes the 
 
 The mixed workload uses long 131,072-transition regimes and a 512-transition observation window. That gives the selector ample time to amortize its observation cost.
 
-The next falsification target is the ratio between environment timescale and adaptation timescale:
+The next falsification target is:
 
 ```text
 tau_environment / tau_adaptation
@@ -226,15 +194,13 @@ tau_environment / tau_adaptation
 
 If the environment changes faster than the selector can observe and react, adaptive execution should lose its advantage.
 
-The next benchmark should therefore sweep:
+Next sweep:
 
 - regime length: 128 / 512 / 2K / 8K / 32K / 128K transitions
 - observation window: 32 / 64 / 128 / 512 transitions
 - classification accuracy
 - selector lag
 - branch-only / LUT-only / oracle / adaptive execution time
-
-This will locate the actual break-even boundary for self-adapting execution.
 
 ## Scope boundary
 
