@@ -1,3 +1,9 @@
+from .calibration_trust import (
+    CalibrationTrustEvidence,
+    CalibrationTrustResult,
+    evaluate_calibration_trust,
+    shrink_correction_probabilities,
+)
 from .capability import (
     Capability,
     CapabilityMode,
@@ -62,6 +68,10 @@ from .trajectory import (
 from .trigram import BardoTrigram
 
 __all__ = [
+    "CalibrationTrustEvidence",
+    "CalibrationTrustResult",
+    "evaluate_calibration_trust",
+    "shrink_correction_probabilities",
     "BardoLine",
     "LineState",
     "TransitionMode",
