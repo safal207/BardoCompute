@@ -52,9 +52,9 @@ static void fill_policy(uint8_t *policy, uint32_t entries) {
 
 int main(void) {
     const size_t n = 8000000u;
-    const unsigned repeats = 8u;
+    const unsigned repeats = 6u;
     const unsigned min_bits = 12u;
-    const unsigned max_bits = 18u;
+    const unsigned max_bits = 23u;
     const uint32_t max_entries = 1u << max_bits;
 
     uint8_t *policy = malloc((size_t)max_entries * sizeof(*policy));
