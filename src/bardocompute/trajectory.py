@@ -43,6 +43,39 @@ class TrajectoryPhase(str, Enum):
     REORIENTING = "reorienting"
 
 
+_PHASE_TO_CODE = {
+    TrajectoryPhase.STALLED: 0,
+    TrajectoryPhase.CONVERGING: 1,
+    TrajectoryPhase.REGRESSING: 2,
+    TrajectoryPhase.REORIENTING: 3,
+}
+_CODE_TO_PHASE = (
+    TrajectoryPhase.STALLED,
+    TrajectoryPhase.CONVERGING,
+    TrajectoryPhase.REGRESSING,
+    TrajectoryPhase.REORIENTING,
+)
+
+
+def classify_orientation_phase(
+    previous: EvidenceKind,
+    current: EvidenceKind,
+) -> TrajectoryPhase:
+    """Classify one orientation step from two consecutive masks."""
+
+    previous_code = int(previous) & 0x7
+    current_code = int(current) & 0x7
+    cleared = ((previous_code & ~current_code) & 0x7).bit_count()
+    added = ((~previous_code & current_code) & 0x7).bit_count()
+    if cleared and added:
+        return TrajectoryPhase.REORIENTING
+    if cleared:
+        return TrajectoryPhase.CONVERGING
+    if added:
+        return TrajectoryPhase.REGRESSING
+    return TrajectoryPhase.STALLED
+
+
 @dataclass(frozen=True, slots=True)
 class PhasePoint:
     """One observed transition/orientation state at a monotonic time tick."""
@@ -122,15 +155,10 @@ class PhaseStep:
 
     @property
     def phase(self) -> TrajectoryPhase:
-        cleared = self.cleared_dimensions
-        added = self.added_dimensions
-        if cleared and added:
-            return TrajectoryPhase.REORIENTING
-        if cleared:
-            return TrajectoryPhase.CONVERGING
-        if added:
-            return TrajectoryPhase.REGRESSING
-        return TrajectoryPhase.STALLED
+        return classify_orientation_phase(
+            self.previous.orientation.missing,
+            self.current.orientation.missing,
+        )
 
     @property
     def is_discontinuous(self) -> bool:
@@ -193,6 +221,75 @@ class TemporalSignature:
         if point.orientation.decision is TaoDecision.DEFER:
             code |= 1 << 5
         return TemporalSignature(code)
+
+
+@dataclass(frozen=True, slots=True)
+class KineticSignature:
+    """One-byte hot state retaining current orientation and current motion.
+
+    Logical layout:
+    bits 0..2: current missing-evidence mask
+    bit 3: a regression has occurred at any prior/current step
+    bit 4: a discontinuity has occurred at any prior/current point
+    bits 5..6: current four-way TrajectoryPhase code
+    bit 7: phase is valid (at least one step has been observed)
+
+    Unlike TemporalSignature, this specialized layout does not retain the
+    separate `ever_deferred` flag. It spends that budget on current kinetics.
+    """
+
+    code: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.code <= 0xFF:
+            raise ValueError("kinetic signature must fit in one byte")
+
+    @classmethod
+    def initial(cls, point: PhasePoint) -> "KineticSignature":
+        code = int(point.orientation.missing) & 0x7
+        if point.line.mode is TransitionMode.DISCONTINUOUS:
+            code |= 1 << 4
+        return cls(code)
+
+    @property
+    def current_missing(self) -> EvidenceKind:
+        return EvidenceKind(self.code & 0x7)
+
+    @property
+    def had_regression(self) -> bool:
+        return bool(self.code & (1 << 3))
+
+    @property
+    def had_discontinuity(self) -> bool:
+        return bool(self.code & (1 << 4))
+
+    @property
+    def has_phase(self) -> bool:
+        return bool(self.code & (1 << 7))
+
+    @property
+    def current_phase(self) -> TrajectoryPhase | None:
+        if not self.has_phase:
+            return None
+        return _CODE_TO_PHASE[(self.code >> 5) & 0x3]
+
+    def advance(self, point: PhasePoint) -> "KineticSignature":
+        previous_missing = self.current_missing
+        next_missing = EvidenceKind(int(point.orientation.missing) & 0x7)
+        phase = classify_orientation_phase(previous_missing, next_missing)
+
+        # Preserve history flags, replace current orientation + current phase.
+        code = self.code & ((1 << 3) | (1 << 4))
+        code |= int(next_missing) & 0x7
+        code |= _PHASE_TO_CODE[phase] << 5
+        code |= 1 << 7
+
+        if phase in (TrajectoryPhase.REGRESSING, TrajectoryPhase.REORIENTING):
+            # A reorientation also reintroduces at least one missing dimension.
+            code |= 1 << 3
+        if point.line.mode is TransitionMode.DISCONTINUOUS:
+            code |= 1 << 4
+        return KineticSignature(code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,6 +390,13 @@ class PhaseTrajectory:
     @property
     def signature(self) -> TemporalSignature:
         signature = TemporalSignature.initial(self.points[0])
+        for point in self.points[1:]:
+            signature = signature.advance(point)
+        return signature
+
+    @property
+    def kinetic_signature(self) -> KineticSignature:
+        signature = KineticSignature.initial(self.points[0])
         for point in self.points[1:]:
             signature = signature.advance(point)
         return signature
