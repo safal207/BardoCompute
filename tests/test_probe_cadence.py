@@ -14,6 +14,7 @@ def test_more_drift_shortens_probe_interval() -> None:
             miss_loss=120.0,
             false_action_loss=500.0,
             probe_cost=2.0,
+            min_interval=1,
         )
     )
     shifted = evaluate_probe_cadence(
@@ -23,6 +24,7 @@ def test_more_drift_shortens_probe_interval() -> None:
             miss_loss=120.0,
             false_action_loss=500.0,
             probe_cost=2.0,
+            min_interval=1,
         )
     )
     assert shifted.interval < calm.interval
@@ -36,6 +38,7 @@ def test_more_expensive_probe_lengthens_interval() -> None:
             miss_loss=120.0,
             false_action_loss=500.0,
             probe_cost=1.0,
+            min_interval=1,
         )
     )
     expensive = evaluate_probe_cadence(
@@ -44,7 +47,8 @@ def test_more_expensive_probe_lengthens_interval() -> None:
             drift_score=0.25,
             miss_loss=120.0,
             false_action_loss=500.0,
-            probe_cost=16.0,
+            probe_cost=400.0,
+            min_interval=1,
         )
     )
     assert expensive.interval > cheap.interval
