@@ -5,7 +5,14 @@ on:
   pull_request:
 
 jobs:
-  native-benchmark:
+  native-benchmark-a:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/atman_cosmic_observer_bench.c -o native/atman_cosmic_observer_bench
+      - run: ./native/atman_cosmic_observer_bench
+
+  native-benchmark-b:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
