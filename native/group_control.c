@@ -122,26 +122,51 @@ int main(void) {
     }
     const double trigram_build = now_seconds() - started;
 
-    uint64_t generic_checksum = 0;
-    started = now_seconds();
-    for (unsigned r = 0; r < repeats; ++r) {
-        generic_checksum += scan_u16(generic_groups, n_groups, generic_policy);
+    /* Warm both paths before measuring. */
+    const uint64_t generic_warm = scan_u16(generic_groups, n_groups, generic_policy);
+    const uint64_t trigram_warm = scan_u8(trigram_groups, n_groups, trigram_policy);
+    if (generic_warm != trigram_warm) {
+        fprintf(stderr, "warmup checksum mismatch\n");
+        free(generic_groups);
+        free(trigram_groups);
+        return 3;
     }
-    const double generic_scan = (now_seconds() - started) / repeats;
 
+    uint64_t generic_checksum = 0;
     uint64_t trigram_checksum = 0;
-    started = now_seconds();
+    double generic_scan_total = 0.0;
+    double trigram_scan_total = 0.0;
+
+    /* Alternate order to reduce frequency/thermal/order bias. */
     for (unsigned r = 0; r < repeats; ++r) {
-        trigram_checksum += scan_u8(trigram_groups, n_groups, trigram_policy);
+        if ((r & 1u) == 0u) {
+            started = now_seconds();
+            generic_checksum += scan_u16(generic_groups, n_groups, generic_policy);
+            generic_scan_total += now_seconds() - started;
+
+            started = now_seconds();
+            trigram_checksum += scan_u8(trigram_groups, n_groups, trigram_policy);
+            trigram_scan_total += now_seconds() - started;
+        } else {
+            started = now_seconds();
+            trigram_checksum += scan_u8(trigram_groups, n_groups, trigram_policy);
+            trigram_scan_total += now_seconds() - started;
+
+            started = now_seconds();
+            generic_checksum += scan_u16(generic_groups, n_groups, generic_policy);
+            generic_scan_total += now_seconds() - started;
+        }
     }
-    const double trigram_scan = (now_seconds() - started) / repeats;
+
+    const double generic_scan = generic_scan_total / repeats;
+    const double trigram_scan = trigram_scan_total / repeats;
 
     if (generic_checksum != trigram_checksum) {
         fprintf(stderr, "checksum mismatch: generic=%" PRIu64 " trigram=%" PRIu64 "\n",
                 generic_checksum, trigram_checksum);
         free(generic_groups);
         free(trigram_groups);
-        return 3;
+        return 4;
     }
 
     const size_t generic_bytes = n_groups * sizeof(*generic_groups);
@@ -150,6 +175,7 @@ int main(void) {
     printf("groups=%zu\n", n_groups);
     printf("repeats=%u\n", repeats);
     printf("valid_group_states=216\n");
+    printf("measurement_order=alternating_after_warmup\n");
     printf("correct=true\n\n");
 
     printf("[generic packed group: three 3-bit line codes in uint16_t]\n");
