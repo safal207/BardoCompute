@@ -34,8 +34,6 @@ The Bardo/Tao guard is semantically equivalent to the conventional epoch-aware F
 
 ## Stochastic adaptability metric
 
-For v0.1 the metric remains a vector:
-
 ```text
 StochasticAdaptability = (
     correct_mode_rate,
@@ -52,9 +50,7 @@ A scalar score would require justified workload-specific weights.
 
 A perfectly regular capability trajectory previously made a tiny 12-entry transition LUT about 2.2-2.5x slower than a branch FSM. That result does not generalize to less predictable input.
 
-Native equal-semantic workload: 12,000,000 pregenerated signals, 8 repeats, RNG excluded from timed loops.
-
-The profile names are workload labels; this test does not compute formal Shannon entropy. The later online selector uses a conditional next-signal miss proxy.
+Native equal-semantic workload: 12,000,000 pregenerated signals, 8 repeats, RNG excluded from timed loops. The profile names are workload labels; this test does not compute formal Shannon entropy. The later online selector uses a conditional next-signal miss proxy.
 
 ### Runner A
 
@@ -75,8 +71,6 @@ The profile names are workload labels; this test does not compute formal Shannon
 | shock-heavy, 10% HOLD | 0.072000 | 0.020741 | 0.288x |
 
 All branch/LUT checksums were identical.
-
-The current execution hypothesis is therefore:
 
 ```text
 execution_path = f(
@@ -133,8 +127,6 @@ On this deliberately mixed long-regime workload, online predictability-aware sel
 
 The speed gain belongs to generic adaptation between equal-semantic branch and LUT implementations. It is not evidence that Bardo/Tao terminology intrinsically accelerates a CPU.
 
-The architectural contribution of the transition/trajectory model is the hypothesis that the execution mechanism itself can become a controlled state variable:
-
 ```text
 Trajectory(t-window...t)
         ↓
@@ -150,23 +142,11 @@ This is the first BardoCompute experiment where adaptation changes **how computa
 
 ## Next falsification: adaptation timescale
 
-The current mixed workload uses long 131,072-transition regimes and a 512-transition observation window. This gives the selector substantial time to amortize observation cost.
-
-The next target is:
-
 ```text
 tau_environment / tau_adaptation
 ```
 
-If the environment changes faster than the selector can classify and react, adaptive execution should lose its advantage.
-
-Planned sweep:
-
-- regime length: 128 / 512 / 2K / 8K / 32K / 128K
-- observation window: 32 / 64 / 128 / 512
-- classification accuracy
-- selector lag
-- branch-only / LUT-only / oracle / adaptive runtime
+The current 131,072-transition regimes are long relative to the 512-transition observation window. Sweep regime length 128 / 512 / 2K / 8K / 32K / 128K and observation window 32 / 64 / 128 / 512 to locate the break-even point.
 
 ## Scope boundary
 
