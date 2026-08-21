@@ -75,6 +75,9 @@ cross-scale evidence
                           ↓
                   revisable observation
                           ↓
+              Observation Payback
+               SKIP / HOLD / REVISIT
+                          ↓
                  persistence evidence
                           ↓
                  Living Process payback
@@ -180,6 +183,58 @@ Narrow supported conclusion:
 
 This does **not** establish that the current sentinel, interval, or threshold is optimal or broadly transferable.
 
+## Adaptive Observation Payback result
+
+The hard-coded `5/8` revisit threshold was then replaced by an economic decision kernel in `src/bardocompute/observation_payback.py` and tested in `benchmarks/observation_payback.py`.
+
+The gate asks:
+
+```text
+expected value of beneficial correction
+- expected harm of false correction
+- deeper observation cost
+```
+
+and returns:
+
+```text
+REVISIT / HOLD / SKIP
+```
+
+Its calibration comes only from past seeded episodes plus the current sentinel hit count. A conventional formula with identical information produces identical actions.
+
+Hosted CI #340, Python 3.12, passed 94 tests and the full benchmark matrix.
+
+The broad claim that adaptive payback always beats a fixed threshold was falsified. Under cheap, balanced, and expensive observation costs, the calibration-trained global threshold was slightly cheaper overall even though adaptive payback eliminated almost all missed adaptations.
+
+A narrower positive result appeared when false adaptation was very expensive:
+
+```text
+false_action_cost=500
+
+in distribution:
+trained fixed 8/8 mean_loss=169.733
+adaptive payback  mean_loss=161.677
+ratio=0.953x
+```
+
+But distribution shift reversed the result:
+
+```text
+trained fixed 8/8 mean_loss=184.801
+adaptive payback  mean_loss=199.415
+ratio=1.079x
+
+trained fixed false_adapt=1023
+adaptive false_adapt=2302
+```
+
+The static payback calibration stayed highly sensitive (`3` missed adaptations versus `4,625`) but underestimated harmful-correction risk after the environment changed.
+
+Therefore the next bottleneck is not another observer label or a more aggressive zoom policy. It is **calibration trust under change**.
+
+Detailed evidence: `docs/observation-payback-results-v0.1.md`.
+
 ## Interpretation of PRESENCE
 
 The result suggests a more useful operational reading of `PRESENCE` / `HOLD`:
@@ -189,11 +244,18 @@ HOLD != dead end
 HOLD = preserve current action while keeping observation revisable
 ```
 
-This is stronger than either premature reaction or permanent early commitment, but it remains an engineering control rule rather than a claim about human cognition.
+The payback result adds a second requirement:
+
+```text
+revisable != always re-observe
+re-observe only when estimated value of information repays cost
+```
+
+This is an engineering control rule rather than a claim about human cognition.
 
 ## OPEN boundary
 
-`OPEN` was reached zero times in the current benchmark and therefore has **no measured performance benefit**. It remains descriptive/control-plane semantics only.
+`OPEN` was reached zero times in the original observer benchmark and therefore has **no measured performance benefit**. It remains descriptive/control-plane semantics only.
 
 If later used, its strict meaning remains:
 
@@ -203,30 +265,32 @@ release model commitment != erase evidence history
 
 ## Next falsification
 
-The zero-error result is too clean to promote without attack. The next suite must vary independently:
+The next suite should attack calibration itself:
 
-- late-shift amplitude and start distribution;
-- gradual versus abrupt drift;
-- transient burst duration;
-- multiple shocks and reversals;
-- sentinel density and trigger threshold;
-- adversarial periodic patterns;
-- signal distribution shift;
-- explicit per-observation cost and missed/false adaptation cost.
+- uncertainty-aware probability estimates;
+- shrink sparse context cells toward base rates;
+- online calibration-error monitoring;
+- distribution-shift severity sweeps;
+- bounded online recalibration without future leakage;
+- explicit cost for detecting drift and updating calibration.
 
-The next mechanism should replace the fixed sentinel policy with an observation-payback gate:
+Compare:
 
 ```text
-re-observe / zoom deeper only when
-expected value of additional information > observation cost
+global trained threshold
+static context-conditioned payback
+uncertainty-shrunk payback
+online drift-aware payback
 ```
 
-That would connect observer zoom directly to the Living Process orientation principle.
+Measure economic loss, false/missed adaptation, observation volume, calibration error, and detection lag together.
 
 ## Scientific boundary
 
 The project is testing a computational control principle:
 
-> Before changing the system, test whether the apparent change survives an economically useful change of observation scale, and keep earlier conclusions revisable when new evidence arrives.
+> Before changing the system, test whether the apparent change survives an economically useful change of observation scale, keep earlier conclusions revisable when new evidence arrives, and buy additional evidence only when its calibrated expected value can repay its cost.
+
+The new distribution-shift failure shows that this rule is incomplete without calibration uncertainty and drift handling.
 
 No claim is made that this is a universal law of life, finance, psychology, biology, or physics. Transfer to unrelated workloads must be demonstrated separately.
