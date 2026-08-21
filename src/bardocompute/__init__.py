@@ -11,6 +11,7 @@ from .tao import (
 from .trajectory import (
     PhasePoint,
     PhaseTrajectory,
+    TemporalSignature,
     orientation_distance,
     orientation_vector,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "orient_tao",
     "PhasePoint",
     "PhaseTrajectory",
+    "TemporalSignature",
     "orientation_distance",
     "orientation_vector",
 ]
