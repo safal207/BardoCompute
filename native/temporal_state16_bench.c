@@ -27,7 +27,10 @@ enum {
     AGE_EXPIRED = 3,
     DECISION_ALLOW = 0,
     DECISION_DEFER = 1,
-    DECISION_DENY = 2
+    DECISION_DENY = 2,
+    TEMPORAL_USED_BITS = 14,
+    TEMPORAL_POLICY_ENTRIES = 1 << TEMPORAL_USED_BITS,
+    TEMPORAL_POLICY_MASK = TEMPORAL_POLICY_ENTRIES - 1
 };
 
 static double now_seconds(void) {
@@ -60,7 +63,6 @@ static uint16_t pack_temporal(
     );
 }
 
-/* Equal-information conventional uint16 control: deliberately identical. */
 static uint16_t pack_generic(
     uint8_t current_missing,
     uint8_t previous_phase,
@@ -135,7 +137,7 @@ static uint64_t scan_explicit(const explicit_temporal_t *records, size_t n) {
     return alerts;
 }
 
-static uint64_t scan_packed(const uint16_t *records, size_t n) {
+static uint64_t scan_packed_direct(const uint16_t *records, size_t n) {
     uint64_t alerts = 0;
     for (size_t i = 0; i < n; ++i) {
         alerts += packed_alert(records[i]);
@@ -143,10 +145,22 @@ static uint64_t scan_packed(const uint16_t *records, size_t n) {
     return alerts;
 }
 
+static uint64_t scan_packed_lut(
+    const uint16_t *records,
+    size_t n,
+    const uint8_t policy[TEMPORAL_POLICY_ENTRIES]
+) {
+    uint64_t alerts = 0;
+    for (size_t i = 0; i < n; ++i) {
+        alerts += policy[records[i] & TEMPORAL_POLICY_MASK];
+    }
+    return alerts;
+}
+
 static explicit_temporal_t make_record(size_t i) {
     const uint8_t kind = (uint8_t)(i % 5u);
     explicit_temporal_t record = {
-        0x4u, /* OUTCOME missing */
+        0x4u,
         PHASE_CONVERGING,
         PHASE_CONVERGING,
         AGE_FRESH,
@@ -173,21 +187,34 @@ static explicit_temporal_t make_record(size_t i) {
 
 int main(void) {
     const size_t n = 12000000u;
-    const unsigned repeats = 10u;
+    const unsigned repeats = 12u;
     const uint64_t expected_alerts = (uint64_t)(n / 5u * 4u);
 
     explicit_temporal_t *explicit_records = malloc(n * sizeof(*explicit_records));
     uint16_t *temporal_records = malloc(n * sizeof(*temporal_records));
     uint16_t *generic_records = malloc(n * sizeof(*generic_records));
-    if (explicit_records == NULL || temporal_records == NULL || generic_records == NULL) {
+    uint8_t *policy = malloc(TEMPORAL_POLICY_ENTRIES * sizeof(*policy));
+    if (
+        explicit_records == NULL ||
+        temporal_records == NULL ||
+        generic_records == NULL ||
+        policy == NULL
+    ) {
         fprintf(stderr, "allocation failed\n");
         free(explicit_records);
         free(temporal_records);
         free(generic_records);
+        free(policy);
         return 2;
     }
 
     double started = now_seconds();
+    for (unsigned code = 0; code < TEMPORAL_POLICY_ENTRIES; ++code) {
+        policy[code] = packed_alert((uint16_t)code);
+    }
+    const double policy_build = now_seconds() - started;
+
+    started = now_seconds();
     for (size_t i = 0; i < n; ++i) {
         explicit_records[i] = make_record(i);
     }
@@ -229,6 +256,7 @@ int main(void) {
             free(explicit_records);
             free(temporal_records);
             free(generic_records);
+            free(policy);
             return 3;
         }
         if ((temporal_records[i] & 0xC000u) != 0u) {
@@ -236,85 +264,92 @@ int main(void) {
             free(explicit_records);
             free(temporal_records);
             free(generic_records);
+            free(policy);
             return 4;
         }
     }
 
     const uint64_t explicit_warm = scan_explicit(explicit_records, n);
-    const uint64_t temporal_warm = scan_packed(temporal_records, n);
-    const uint64_t generic_warm = scan_packed(generic_records, n);
+    const uint64_t direct_warm = scan_packed_direct(temporal_records, n);
+    const uint64_t lut_warm = scan_packed_lut(temporal_records, n, policy);
+    const uint64_t generic_lut_warm = scan_packed_lut(generic_records, n, policy);
     if (
         explicit_warm != expected_alerts ||
-        temporal_warm != expected_alerts ||
-        generic_warm != expected_alerts
+        direct_warm != expected_alerts ||
+        lut_warm != expected_alerts ||
+        generic_lut_warm != expected_alerts
     ) {
         fprintf(stderr, "warmup checksum mismatch\n");
         free(explicit_records);
         free(temporal_records);
         free(generic_records);
+        free(policy);
         return 5;
     }
 
     double explicit_total = 0.0;
-    double temporal_total = 0.0;
-    double generic_total = 0.0;
+    double direct_total = 0.0;
+    double lut_total = 0.0;
+    double generic_lut_total = 0.0;
     uint64_t explicit_checksum = 0;
-    uint64_t temporal_checksum = 0;
-    uint64_t generic_checksum = 0;
+    uint64_t direct_checksum = 0;
+    uint64_t lut_checksum = 0;
+    uint64_t generic_lut_checksum = 0;
 
     for (unsigned r = 0; r < repeats; ++r) {
-        if ((r % 3u) == 0u) {
-            started = now_seconds();
-            explicit_checksum += scan_explicit(explicit_records, n);
-            explicit_total += now_seconds() - started;
-            started = now_seconds();
-            temporal_checksum += scan_packed(temporal_records, n);
-            temporal_total += now_seconds() - started;
-            started = now_seconds();
-            generic_checksum += scan_packed(generic_records, n);
-            generic_total += now_seconds() - started;
-        } else if ((r % 3u) == 1u) {
-            started = now_seconds();
-            generic_checksum += scan_packed(generic_records, n);
-            generic_total += now_seconds() - started;
-            started = now_seconds();
-            explicit_checksum += scan_explicit(explicit_records, n);
-            explicit_total += now_seconds() - started;
-            started = now_seconds();
-            temporal_checksum += scan_packed(temporal_records, n);
-            temporal_total += now_seconds() - started;
+        const unsigned order = r & 3u;
+        if (order == 0u) {
+            started = now_seconds(); explicit_checksum += scan_explicit(explicit_records, n); explicit_total += now_seconds() - started;
+            started = now_seconds(); direct_checksum += scan_packed_direct(temporal_records, n); direct_total += now_seconds() - started;
+            started = now_seconds(); lut_checksum += scan_packed_lut(temporal_records, n, policy); lut_total += now_seconds() - started;
+            started = now_seconds(); generic_lut_checksum += scan_packed_lut(generic_records, n, policy); generic_lut_total += now_seconds() - started;
+        } else if (order == 1u) {
+            started = now_seconds(); direct_checksum += scan_packed_direct(temporal_records, n); direct_total += now_seconds() - started;
+            started = now_seconds(); lut_checksum += scan_packed_lut(temporal_records, n, policy); lut_total += now_seconds() - started;
+            started = now_seconds(); generic_lut_checksum += scan_packed_lut(generic_records, n, policy); generic_lut_total += now_seconds() - started;
+            started = now_seconds(); explicit_checksum += scan_explicit(explicit_records, n); explicit_total += now_seconds() - started;
+        } else if (order == 2u) {
+            started = now_seconds(); lut_checksum += scan_packed_lut(temporal_records, n, policy); lut_total += now_seconds() - started;
+            started = now_seconds(); generic_lut_checksum += scan_packed_lut(generic_records, n, policy); generic_lut_total += now_seconds() - started;
+            started = now_seconds(); explicit_checksum += scan_explicit(explicit_records, n); explicit_total += now_seconds() - started;
+            started = now_seconds(); direct_checksum += scan_packed_direct(temporal_records, n); direct_total += now_seconds() - started;
         } else {
-            started = now_seconds();
-            temporal_checksum += scan_packed(temporal_records, n);
-            temporal_total += now_seconds() - started;
-            started = now_seconds();
-            generic_checksum += scan_packed(generic_records, n);
-            generic_total += now_seconds() - started;
-            started = now_seconds();
-            explicit_checksum += scan_explicit(explicit_records, n);
-            explicit_total += now_seconds() - started;
+            started = now_seconds(); generic_lut_checksum += scan_packed_lut(generic_records, n, policy); generic_lut_total += now_seconds() - started;
+            started = now_seconds(); explicit_checksum += scan_explicit(explicit_records, n); explicit_total += now_seconds() - started;
+            started = now_seconds(); direct_checksum += scan_packed_direct(temporal_records, n); direct_total += now_seconds() - started;
+            started = now_seconds(); lut_checksum += scan_packed_lut(temporal_records, n, policy); lut_total += now_seconds() - started;
         }
     }
 
-    if (explicit_checksum != temporal_checksum || temporal_checksum != generic_checksum) {
+    if (
+        explicit_checksum != direct_checksum ||
+        direct_checksum != lut_checksum ||
+        lut_checksum != generic_lut_checksum
+    ) {
         fprintf(stderr, "checksum mismatch\n");
         free(explicit_records);
         free(temporal_records);
         free(generic_records);
+        free(policy);
         return 6;
     }
 
     const double explicit_scan = explicit_total / repeats;
-    const double temporal_scan = temporal_total / repeats;
-    const double generic_scan = generic_total / repeats;
+    const double direct_scan = direct_total / repeats;
+    const double lut_scan = lut_total / repeats;
+    const double generic_lut_scan = generic_lut_total / repeats;
     const size_t explicit_bytes = n * sizeof(*explicit_records);
     const size_t temporal_bytes = n * sizeof(*temporal_records);
     const size_t generic_bytes = n * sizeof(*generic_records);
+    const size_t policy_bytes = TEMPORAL_POLICY_ENTRIES * sizeof(*policy);
 
     printf("records=%zu\n", n);
     printf("repeats=%u\n", repeats);
-    printf("used_bits=14\n");
+    printf("used_bits=%d\n", TEMPORAL_USED_BITS);
     printf("reserved_bits=2\n");
+    printf("policy_entries=%d\n", TEMPORAL_POLICY_ENTRIES);
+    printf("policy_bytes=%zu\n", policy_bytes);
+    printf("policy_build_seconds=%.9f\n", policy_build);
     printf("expected_alerts=%" PRIu64 "\n", expected_alerts);
     printf("representation_identity=true\n");
     printf("correct=true\n\n");
@@ -325,28 +360,33 @@ int main(void) {
     printf("build_seconds=%.6f\n", explicit_build);
     printf("scan_seconds_avg=%.6f\n\n", explicit_scan);
 
-    printf("[TemporalState16]\n");
+    printf("[TemporalState16 direct decode]\n");
     printf("bytes_per_record=%zu\n", sizeof(*temporal_records));
     printf("total_bytes=%zu\n", temporal_bytes);
     printf("build_seconds=%.6f\n", temporal_build);
-    printf("scan_seconds_avg=%.6f\n\n", temporal_scan);
+    printf("scan_seconds_avg=%.6f\n\n", direct_scan);
 
-    printf("[generic equal-information uint16_t control]\n");
-    printf("bytes_per_record=%zu\n", sizeof(*generic_records));
+    printf("[TemporalState16 + 16KB policy LUT]\n");
+    printf("total_bytes=%zu\n", temporal_bytes);
+    printf("scan_seconds_avg=%.6f\n\n", lut_scan);
+
+    printf("[generic equal-information uint16_t + same LUT]\n");
     printf("total_bytes=%zu\n", generic_bytes);
     printf("build_seconds=%.6f\n", generic_build);
-    printf("scan_seconds_avg=%.6f\n\n", generic_scan);
+    printf("scan_seconds_avg=%.6f\n\n", generic_lut_scan);
 
     printf("temporal_memory_vs_explicit=%.3fx\n", (double)temporal_bytes / (double)explicit_bytes);
     printf("temporal_build_vs_explicit=%.3fx\n", temporal_build / explicit_build);
-    printf("temporal_scan_vs_explicit=%.3fx\n", temporal_scan / explicit_scan);
-    printf("temporal_build_vs_generic=%.3fx\n", temporal_build / generic_build);
-    printf("temporal_scan_vs_generic=%.3fx\n", temporal_scan / generic_scan);
-    printf("alerts_per_scan=%" PRIu64 "\n", temporal_warm);
-    printf("control_note=generic uint16 control is intentionally bit-identical; any packed advantage belongs to compact inline temporal representation, not Bardo/Tao terminology\n");
+    printf("direct_scan_vs_explicit=%.3fx\n", direct_scan / explicit_scan);
+    printf("lut_scan_vs_explicit=%.3fx\n", lut_scan / explicit_scan);
+    printf("lut_scan_vs_direct=%.3fx\n", lut_scan / direct_scan);
+    printf("lut_scan_vs_generic_lut=%.3fx\n", lut_scan / generic_lut_scan);
+    printf("alerts_per_scan=%" PRIu64 "\n", lut_warm);
+    printf("control_note=the 16KB lookup execution path is generic to the 14-bit state space; generic uint16_t uses the identical table and bits\n");
 
     free(explicit_records);
     free(temporal_records);
     free(generic_records);
+    free(policy);
     return 0;
 }
