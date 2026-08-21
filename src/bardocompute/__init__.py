@@ -10,6 +10,7 @@ from .tao import (
     decide_tao,
     orient_tao,
 )
+from .temporal_state import TemporalState16
 from .trajectory import (
     KineticSignature,
     PhasePoint,
@@ -43,6 +44,7 @@ __all__ = [
     "PhaseStep",
     "PhaseTrajectory",
     "TemporalSignature",
+    "TemporalState16",
     "TrajectoryPhase",
     "classify_orientation_phase",
     "orientation_distance",
