@@ -38,6 +38,15 @@ class Capability(IntFlag):
     ALL = MANIFEST | ACQUIRE | ADAPT
 
 
+class CapabilitySignal(IntEnum):
+    """External/temporal signal that drives a capability-mode transition."""
+
+    HOLD = 0
+    ENVIRONMENT_CHANGE = 1
+    GAP_DETECTED = 2
+    EVIDENCE_READY = 3
+
+
 def capability_bit(mode: CapabilityMode) -> Capability:
     return Capability(1 << int(mode))
 
@@ -102,6 +111,37 @@ def choose_capability_mode(
     return CapabilityMode.MANIFEST
 
 
+def step_capability_mode(
+    current: CapabilityMode,
+    signal: CapabilitySignal,
+) -> CapabilityMode:
+    """Small transition algebra for capability flow over time.
+
+    HOLD keeps the current mode.
+    ENVIRONMENT_CHANGE moves the system into ADAPT.
+    GAP_DETECTED moves an adapting/acquiring system into ACQUIRE.
+    EVIDENCE_READY closes adaptation/acquisition back into MANIFEST.
+
+    The state machine is intentionally conventional and explicit. Bardo/Tao
+    terminology organizes the semantics; a normal finite-state machine with
+    the same transition table is the equal-information control.
+    """
+
+    if signal is CapabilitySignal.HOLD:
+        return current
+    if signal is CapabilitySignal.ENVIRONMENT_CHANGE:
+        return CapabilityMode.ADAPT
+    if signal is CapabilitySignal.GAP_DETECTED:
+        if current in (CapabilityMode.ADAPT, CapabilityMode.ACQUIRE):
+            return CapabilityMode.ACQUIRE
+        return CapabilityMode.ADAPT
+    if signal is CapabilitySignal.EVIDENCE_READY:
+        if current in (CapabilityMode.ADAPT, CapabilityMode.ACQUIRE):
+            return CapabilityMode.MANIFEST
+        return current
+    raise ValueError(f"unsupported capability signal: {signal!r}")
+
+
 def flow_profile(
     profile: CapabilityProfile,
     *,
@@ -119,6 +159,15 @@ def flow_profile(
         had_discontinuity=had_discontinuity,
     )
     return profile.with_mode(next_mode)
+
+
+def step_profile(
+    profile: CapabilityProfile,
+    signal: CapabilitySignal,
+) -> CapabilityProfile:
+    """Apply one capability-flow signal while preserving carrier identity."""
+
+    return profile.with_mode(step_capability_mode(profile.active, signal))
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +191,6 @@ class CapabilityTemporalState16:
             raise ValueError("capability temporal state must fit in 16 bits")
         if self.mode_code == 3:
             raise ValueError("capability mode code 3 is reserved")
-        # Validate the inherited temporal portion as well.
         TemporalState16(self.code & 0x3FFF)
 
     @classmethod
