@@ -1,4 +1,4 @@
-from .line import BardoLine, LineState
+from .line import BardoLine, LineState, TransitionMode
 from .trigram import BardoTrigram
 
-__all__ = ["BardoLine", "LineState", "BardoTrigram"]
+__all__ = ["BardoLine", "LineState", "TransitionMode", "BardoTrigram"]
