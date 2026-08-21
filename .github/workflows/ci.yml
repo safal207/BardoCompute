@@ -26,5 +26,5 @@ jobs:
       - run: ./native/bardo_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/trigram_bench.c -o native/trigram_bench
       - run: ./native/trigram_bench
-      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/group_control.c -o native/group_control
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic -fopt-info-vec-optimized native/group_control.c -o native/group_control
       - run: ./native/group_control
