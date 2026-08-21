@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from time import perf_counter
 
 from bardocompute import BardoLine, TransitionMode
+from bardocompute.packed import pack_line
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,7 +14,9 @@ class GuardResult:
     false_allows: int
 
 
-def build_workload(iterations: int) -> tuple[list[int], dict[int, bool], list[BardoLine]]:
+def build_workload(
+    iterations: int,
+) -> tuple[list[int], dict[int, bool], list[BardoLine], list[int]]:
     """Build equivalent views of one deterministic recovery workload.
 
     Every transition flips the bit. Rising transitions are eligible for a
@@ -27,6 +30,7 @@ def build_workload(iterations: int) -> tuple[list[int], dict[int, bool], list[Ba
     targets: list[int] = []
     discontinuous_by_event: dict[int, bool] = {}
     bardo_lines: list[BardoLine] = []
+    packed_lines: list[int] = []
 
     for i in range(iterations):
         source = i & 1
@@ -41,8 +45,9 @@ def build_workload(iterations: int) -> tuple[list[int], dict[int, bool], list[Ba
         targets.append(target)
         discontinuous_by_event[i] = discontinuous
         bardo_lines.append(BardoLine.between(source, target, mode))
+        packed_lines.append(pack_line(source, target, discontinuous))
 
-    return targets, discontinuous_by_event, bardo_lines
+    return targets, discontinuous_by_event, bardo_lines, packed_lines
 
 
 def endpoint_only_guard(
@@ -78,7 +83,7 @@ def external_lookup_guard(
 
 
 def bardo_inline_guard(lines: list[BardoLine]) -> GuardResult:
-    """Correct Bardo path: continuity is carried directly by the transition."""
+    """Correct reference-object path: continuity is carried by the transition."""
     allowed = 0
 
     started = perf_counter()
@@ -90,12 +95,30 @@ def bardo_inline_guard(lines: list[BardoLine]) -> GuardResult:
     return GuardResult(elapsed, allowed, 0)
 
 
+def packed_inline_guard(codes: list[int]) -> GuardResult:
+    """Correct packed path using the three-bit field directly.
+
+    bit 1 is target; bit 0 is discontinuity. A dispatch is allowed when the
+    target bit is 1 and the discontinuity bit is 0.
+    """
+    allowed = 0
+
+    started = perf_counter()
+    for code in codes:
+        if (code & 0b010) and not (code & 0b001):
+            allowed += 1
+    elapsed = perf_counter() - started
+
+    return GuardResult(elapsed, allowed, 0)
+
+
 def main(iterations: int = 100_000) -> None:
-    targets, discontinuous_by_event, lines = build_workload(iterations)
+    targets, discontinuous_by_event, lines, packed_lines = build_workload(iterations)
 
     endpoint = endpoint_only_guard(targets, discontinuous_by_event)
     lookup = external_lookup_guard(targets, discontinuous_by_event)
     bardo = bardo_inline_guard(lines)
+    packed = packed_inline_guard(packed_lines)
 
     expected_allowed = iterations // 4
 
@@ -112,15 +135,23 @@ def main(iterations: int = 100_000) -> None:
     print(f"allowed={lookup.allowed}")
     print(f"false_allows={lookup.false_allows}")
     print()
-    print("[Bardo inline continuity]")
+    print("[Bardo reference object]")
     print(f"decision_seconds={bardo.seconds:.6f}")
     print(f"allowed={bardo.allowed}")
     print(f"false_allows={bardo.false_allows}")
     print()
+    print("[Bardo packed 3-bit code]")
+    print(f"decision_seconds={packed.seconds:.6f}")
+    print(f"allowed={packed.allowed}")
+    print(f"false_allows={packed.false_allows}")
+    print()
     print(f"endpoint_correct={endpoint.allowed == expected_allowed}")
     print(f"lookup_correct={lookup.allowed == expected_allowed}")
     print(f"bardo_correct={bardo.allowed == expected_allowed}")
+    print(f"packed_correct={packed.allowed == expected_allowed}")
     print(f"bardo_vs_lookup_decision_ratio={bardo.seconds / lookup.seconds:.3f}x")
+    print(f"packed_vs_lookup_decision_ratio={packed.seconds / lookup.seconds:.3f}x")
+    print(f"packed_vs_object_decision_ratio={packed.seconds / bardo.seconds:.3f}x")
 
 
 if __name__ == "__main__":
