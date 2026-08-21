@@ -54,7 +54,7 @@ StochasticAdaptability = (
 
 A future scalar score may be useful for dashboards, but only after weights and failure costs are justified by a workload.
 
-## Signal entropy changes the best execution path
+## Signal unpredictability changes the best execution path
 
 The deterministic recovery benchmark showed a tiny 12-entry transition LUT about 2.2-2.5x slower than a branch FSM on a perfectly regular capability trajectory.
 
@@ -67,6 +67,8 @@ Native benchmark:
 - identical three-mode/four-signal transition semantics
 - branch FSM versus the same 12-entry LUT
 - RNG excluded from timed loops
+
+The profile names are workload labels. This benchmark does not estimate formal Shannon entropy for each profile; the later adaptive selector uses a conditional next-signal miss proxy as its online predictability measure.
 
 ### Runner A
 
@@ -104,7 +106,7 @@ The evidence supports a stronger hypothesis:
 ```text
 execution_path = f(
     graph_complexity,
-    trajectory_predictability / conditional entropy,
+    trajectory_predictability,
     table_locality,
 )
 ```
@@ -112,8 +114,8 @@ execution_path = f(
 For this workload:
 
 - small + highly predictable transition stream: branches can dominate, as in the deterministic capability cycle;
-- low-entropy random stream: branch and LUT approach parity;
-- small + medium/high stochastic transition stream: the 12-entry LUT is roughly 3x to 3.6x faster;
+- highly skewed stochastic stream: branch and LUT approach parity;
+- small + less predictable stochastic transition stream: the 12-entry LUT is roughly 3x to 3.6x faster;
 - high-dimensional compact temporal policy: a state-indexed LUT is favorable while its table remains within the measured locality budget.
 
 ## Online adaptive execution
