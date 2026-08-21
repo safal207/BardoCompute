@@ -14,12 +14,7 @@ _EVIDENCE_AXES = (
 
 
 def orientation_vector(mask: EvidenceKind) -> tuple[int, int, int]:
-    """Map the missing-evidence mask to a 3D orientation coordinate.
-
-    A coordinate is 1 while that evidence dimension is still required and 0
-    once it is settled. The result is a computational coordinate, not a claim
-    about a physical or philosophical geometry.
-    """
+    """Map the missing-evidence mask to a 3D orientation coordinate."""
 
     return tuple(int(bool(mask & axis)) for axis in _EVIDENCE_AXES)  # type: ignore[return-value]
 
@@ -44,9 +39,65 @@ class PhasePoint:
 
     @property
     def center(self) -> tuple[int, int, int]:
-        """Current center of orientation in evidence-coordinate space."""
-
         return orientation_vector(self.orientation.missing)
+
+
+@dataclass(frozen=True, slots=True)
+class TemporalSignature:
+    """Compact online summary of trajectory properties relevant to policy.
+
+    Logical layout in one byte:
+    bits 0..2: current missing-evidence mask
+    bit 3: a regression has occurred
+    bit 4: a discontinuity has occurred
+    bit 5: a deferred state has occurred
+    bits 6..7: reserved
+    """
+
+    code: int
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.code <= 0xFF:
+            raise ValueError("temporal signature must fit in one byte")
+
+    @classmethod
+    def initial(cls, point: PhasePoint) -> "TemporalSignature":
+        code = int(point.orientation.missing) & 0x7
+        if point.line.mode is TransitionMode.DISCONTINUOUS:
+            code |= 1 << 4
+        if point.orientation.decision is TaoDecision.DEFER:
+            code |= 1 << 5
+        return cls(code)
+
+    @property
+    def current_missing(self) -> EvidenceKind:
+        return EvidenceKind(self.code & 0x7)
+
+    @property
+    def had_regression(self) -> bool:
+        return bool(self.code & (1 << 3))
+
+    @property
+    def had_discontinuity(self) -> bool:
+        return bool(self.code & (1 << 4))
+
+    @property
+    def ever_deferred(self) -> bool:
+        return bool(self.code & (1 << 5))
+
+    def advance(self, point: PhasePoint) -> "TemporalSignature":
+        previous_missing = int(self.current_missing)
+        next_missing = int(point.orientation.missing) & 0x7
+        code = (self.code & ~0x7) | next_missing
+
+        added = (~previous_missing & next_missing) & 0x7
+        if added:
+            code |= 1 << 3
+        if point.line.mode is TransitionMode.DISCONTINUOUS:
+            code |= 1 << 4
+        if point.orientation.decision is TaoDecision.DEFER:
+            code |= 1 << 5
+        return TemporalSignature(code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,8 +119,6 @@ class PhaseTrajectory:
 
     @property
     def orientation_path_length(self) -> int:
-        """Total movement of the orientation center through evidence space."""
-
         return sum(
             orientation_distance(previous.orientation.missing, current.orientation.missing)
             for previous, current in zip(self.points, self.points[1:])
@@ -77,8 +126,6 @@ class PhaseTrajectory:
 
     @property
     def resolved_dimensions(self) -> int:
-        """Count evidence dimensions that move from missing to settled."""
-
         total = 0
         for previous, current in zip(self.points, self.points[1:]):
             cleared = int(previous.orientation.missing) & ~int(current.orientation.missing)
@@ -87,8 +134,6 @@ class PhaseTrajectory:
 
     @property
     def regressions(self) -> int:
-        """Count dimensions that become missing again after being settled."""
-
         total = 0
         for previous, current in zip(self.points, self.points[1:]):
             added = ~int(previous.orientation.missing) & int(current.orientation.missing)
@@ -117,14 +162,17 @@ class PhaseTrajectory:
 
     @property
     def orientation_velocity(self) -> float:
-        """Orientation-space movement per time tick."""
-
         if self.duration == 0:
             return 0.0
         return self.orientation_path_length / self.duration
 
     @property
     def is_monotone_convergent(self) -> bool:
-        """True when no settled evidence dimension becomes missing again."""
-
         return self.regressions == 0
+
+    @property
+    def signature(self) -> TemporalSignature:
+        signature = TemporalSignature.initial(self.points[0])
+        for point in self.points[1:]:
+            signature = signature.advance(point)
+        return signature
