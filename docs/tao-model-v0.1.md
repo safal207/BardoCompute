@@ -54,32 +54,84 @@ The Bardo v0.2 line alphabet remains six semantic states, so the existing trigra
 
 Tao sits above the line/trigram representation as a decision/orientation layer. This isolates its utility and cost from the state-density experiments.
 
-## Falsification benchmark
+## Benchmark A — forced binary terminalization
 
-`benchmarks/tao_defer.py` compares three policies on the same workload:
+`benchmarks/tao_defer.py` compares three policies on a 120,000-case workload containing 40,000 genuinely unresolved outcomes.
 
-- binary optimistic: unresolved -> allow;
-- binary conservative: unresolved -> deny;
-- Tao: unresolved -> defer, then resolve after evidence arrives.
+Latest Python 3.12 CI result:
 
-Metrics:
+- binary optimistic (`pending -> allow`): **20,000 false allows**, 0 false denies;
+- binary conservative (`pending -> deny`): 0 false allows, **20,000 false denies**;
+- Tao (`pending -> defer`): **0 premature false allows**, **0 premature false denies**;
+- Tao deferred 40,000 cases and resolved all 40,000 correctly after outcome evidence arrived.
 
-- false allows;
-- false denies;
-- number of deferred decisions;
-- correctness after deferred resolution;
-- execution time.
+Timing in that run:
 
-The intended claim is narrow:
+- optimistic binary: `0.025096 s`;
+- conservative binary: `0.024742 s`;
+- Tao reference API including second-pass resolution: `0.161669 s`.
 
-> If the environment contains genuinely unresolved outcomes, a non-terminal decision state can avoid premature false allow/deny decisions by paying a deferral/latency cost.
+### Interpretation
 
-This is not evidence that three-valued logic is new, nor that Tao is universally faster than binary logic.
+The useful result is semantic, not predictive:
+
+> When an outcome is genuinely unresolved, refusing to emit a terminal decision can avoid the error introduced by forcing unknown into either allow or deny.
+
+The cost is explicit: deferral requires later resolution and the current Python reference implementation is slower.
+
+## Benchmark B — equal-information conventional PENDING control
+
+`benchmarks/tao_equal_information_control.py` compares Tao with a conventional three-state machine:
+
+`ALLOW | PENDING | DENY`
+
+Both implementations receive the same evidence and use the same two-pass resolution semantics.
+
+Latest Python 3.12 CI result:
+
+- conventional pending decisions: 40,000;
+- Tao deferred decisions: 40,000;
+- errors: 0 for both;
+- deferred/pending cases resolved correctly: 40,000 for both;
+- conventional runtime: `0.027285 s`;
+- Tao runtime: `0.156191 s`;
+- Tao / conventional runtime: **5.724x**.
+
+`semantic_equivalence=true` is asserted by the benchmark.
+
+### Verdict
+
+Tao v0.1 has **not** demonstrated a computational advantage over an equally informative conventional `PENDING` state machine.
+
+The defensible claim is narrower:
+
+> Tao is currently a project ontology/API for explicit non-terminal orientation. Its semantic value is the refusal to collapse unresolved evidence into a false terminal claim. That capability is conventional when compared with an explicit pending-state machine, and the current Python Tao API is slower.
+
+This negative control is intentional.
+
+## Research direction
+
+The next useful question is no longer whether `DEFER` is valuable by itself. Conventional systems already know how to represent `PENDING`.
+
+The stronger hypothesis is whether Tao becomes useful when it carries **orientation**, not merely incompleteness. For example, a deferred state may retain:
+
+- which evidence is missing;
+- which transitions are still admissible;
+- what observation would settle the state;
+- an expiry/deadline;
+- provenance binding to the Bardo transition that produced the unresolved condition.
+
+A candidate form is:
+
+`Tao = (decision=DEFER, missing_evidence, admissible_edges, settle_condition, deadline, provenance)`
+
+That object should then be compared against an equally informative conventional workflow/state-machine representation.
 
 ## Next controls
 
 1. Add a cost function for false allow, false deny, and defer latency.
 2. Vary the fraction of unresolved outcomes.
 3. Vary time-to-resolution distributions.
-4. Compare against conventional explicit `PENDING` state machines.
-5. Test whether Tao provides any implementation advantage over an equally informative conventional `ALLOW/PENDING/DENY` baseline. If not, retain Tao only as project ontology rather than a performance claim.
+4. Add **oriented defer**: encode what evidence can settle the state and what transitions remain legal.
+5. Compare oriented Tao against an equally informative conventional pending-workflow record.
+6. Only claim performance/compactness if it survives that equal-information control.
