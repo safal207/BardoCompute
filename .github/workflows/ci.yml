@@ -20,3 +20,4 @@ jobs:
       - run: pytest -q
       - run: python benchmarks/bardo_vs_binary.py
       - run: python benchmarks/continuity_vs_metadata.py
+      - run: python benchmarks/recovery_guard.py
