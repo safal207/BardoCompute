@@ -229,6 +229,8 @@ not observation policy alone
 but calibration trust under change
 ```
 
+The measured crossover is especially informative because observation volume is almost identical in the false-adapt-sensitive shifted case (`204.92` versus `204.68`). The loss reversal is therefore not explained by simply spending more samples. It is primarily a **decision-calibration failure**: the stale context table routes too many shifted episodes into adaptation.
+
 ## Two economic gates
 
 The architecture now separates two purchases:
