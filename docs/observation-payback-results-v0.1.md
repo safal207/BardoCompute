@@ -298,6 +298,8 @@ Distribution shift now tells us that the price estimate itself has a lifetime.
 
 The next core state is therefore not another symbolic layer. It is an explicit, testable notion of **calibration freshness / trust**.
 
+This v0.1 evidence is frozen as the baseline for that next experiment. Future methods should be compared against these results rather than silently replacing them.
+
 ## Scientific boundary
 
 The result is a decision-theoretic engineering finding in constructed workloads. It does not establish a universal law of observation, intelligence, cognition, finance, biology, or physics.
