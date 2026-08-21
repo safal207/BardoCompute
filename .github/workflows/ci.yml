@@ -19,3 +19,4 @@ jobs:
       - run: pip install -e . pytest
       - run: pytest -q
       - run: python benchmarks/bardo_vs_binary.py
+      - run: python benchmarks/continuity_vs_metadata.py
