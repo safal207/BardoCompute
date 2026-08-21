@@ -18,6 +18,13 @@ from .living_process import (
     OrientationResult,
     evaluate_orientation,
 )
+from .observer_zoom import (
+    ObserverAction,
+    ObserverAssessment,
+    ObserverLevel,
+    ScaleObservation,
+    assess_observer,
+)
 from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
 from .stochastic import (
@@ -68,6 +75,11 @@ __all__ = [
     "OrientationEvidence",
     "OrientationResult",
     "evaluate_orientation",
+    "ObserverAction",
+    "ObserverAssessment",
+    "ObserverLevel",
+    "ScaleObservation",
+    "assess_observer",
     "StochasticCapabilityState",
     "TaggedCapabilitySignal",
     "step_stochastic_capability",
