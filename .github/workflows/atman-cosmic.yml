@@ -13,6 +13,8 @@ jobs:
       - run: ./native/atman_cosmic_observer_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/cosmic_hybrid_sweep.c -o native/cosmic_hybrid_sweep
       - run: ./native/cosmic_hybrid_sweep
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/morphology_register_bench.c -o native/morphology_register_bench
+      - run: ./native/morphology_register_bench
 
   native-benchmark-b:
     runs-on: ubuntu-latest
@@ -22,3 +24,5 @@ jobs:
       - run: ./native/atman_cosmic_observer_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/cosmic_hybrid_sweep.c -o native/cosmic_hybrid_sweep
       - run: ./native/cosmic_hybrid_sweep
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/morphology_register_bench.c -o native/morphology_register_bench
+      - run: ./native/morphology_register_bench
