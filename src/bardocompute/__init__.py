@@ -17,6 +17,11 @@ from .capability import (
     step_capability_mode,
     step_profile,
 )
+from .hazard_cadence import (
+    HazardCadenceEvidence,
+    HazardCadenceResult,
+    evaluate_hazard_cadence,
+)
 from .line import BardoLine, LineState, TransitionMode
 from .living_process import (
     OrientationAction,
@@ -77,6 +82,9 @@ __all__ = [
     "CalibrationTrustResult",
     "evaluate_calibration_trust",
     "shrink_correction_probabilities",
+    "HazardCadenceEvidence",
+    "HazardCadenceResult",
+    "evaluate_hazard_cadence",
     "BardoLine",
     "LineState",
     "TransitionMode",
