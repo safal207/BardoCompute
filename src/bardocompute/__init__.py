@@ -39,6 +39,11 @@ from .observer_zoom import (
 )
 from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
+from .probe_cadence import (
+    ProbeCadenceEvidence,
+    ProbeCadenceResult,
+    evaluate_probe_cadence,
+)
 from .stochastic import (
     StochasticCapabilityState,
     TaggedCapabilitySignal,
@@ -100,6 +105,9 @@ __all__ = [
     "ObserverLevel",
     "ScaleObservation",
     "assess_observer",
+    "ProbeCadenceEvidence",
+    "ProbeCadenceResult",
+    "evaluate_probe_cadence",
     "StochasticCapabilityState",
     "TaggedCapabilitySignal",
     "step_stochastic_capability",
