@@ -4,10 +4,13 @@ from bardocompute.capability import (
     Capability,
     CapabilityMode,
     CapabilityProfile,
+    CapabilitySignal,
     CapabilityTemporalState16,
     Carrier,
     choose_capability_mode,
     flow_profile,
+    step_capability_mode,
+    step_profile,
 )
 from bardocompute.phase_age import PhaseAgeBucket
 from bardocompute.tao import EvidenceKind, TaoDecision
@@ -79,6 +82,30 @@ def test_capability_modes_can_flow_without_changing_carrier() -> None:
     )
     assert profile.carrier is Carrier.YIN
     assert profile.active is CapabilityMode.MANIFEST
+
+
+def test_capability_transition_cycle() -> None:
+    mode = CapabilityMode.MANIFEST
+    mode = step_capability_mode(mode, CapabilitySignal.ENVIRONMENT_CHANGE)
+    assert mode is CapabilityMode.ADAPT
+    mode = step_capability_mode(mode, CapabilitySignal.GAP_DETECTED)
+    assert mode is CapabilityMode.ACQUIRE
+    mode = step_capability_mode(mode, CapabilitySignal.EVIDENCE_READY)
+    assert mode is CapabilityMode.MANIFEST
+
+
+def test_gap_from_manifest_routes_through_adapt_first() -> None:
+    assert step_capability_mode(
+        CapabilityMode.MANIFEST,
+        CapabilitySignal.GAP_DETECTED,
+    ) is CapabilityMode.ADAPT
+
+
+def test_hold_preserves_mode_and_step_profile_preserves_carrier() -> None:
+    profile = CapabilityProfile(Carrier.TAO, active=CapabilityMode.ADAPT)
+    held = step_profile(profile, CapabilitySignal.HOLD)
+    assert held.carrier is Carrier.TAO
+    assert held.active is CapabilityMode.ADAPT
 
 
 def test_capability_temporal_state_uses_reserved_two_bits_only() -> None:
