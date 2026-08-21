@@ -22,3 +22,4 @@ jobs:
       - run: pytest -q tests/test_probe_cadence.py tests/test_headroom_gate.py tests/test_policy_orientation.py
       - run: python benchmarks/recovery_state_transfer.py
       - run: python benchmarks/risk_constrained_recovery.py
+      - run: python benchmarks/action_boundary_fencing.py
