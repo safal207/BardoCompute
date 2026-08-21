@@ -18,6 +18,12 @@ from .living_process import (
     OrientationResult,
     evaluate_orientation,
 )
+from .observation_payback import (
+    ObservationAction,
+    ObservationPaybackEvidence,
+    ObservationPaybackResult,
+    evaluate_observation_payback,
+)
 from .observer_zoom import (
     ObserverAction,
     ObserverAssessment,
@@ -75,6 +81,10 @@ __all__ = [
     "OrientationEvidence",
     "OrientationResult",
     "evaluate_orientation",
+    "ObservationAction",
+    "ObservationPaybackEvidence",
+    "ObservationPaybackResult",
+    "evaluate_observation_payback",
     "ObserverAction",
     "ObserverAssessment",
     "ObserverLevel",
