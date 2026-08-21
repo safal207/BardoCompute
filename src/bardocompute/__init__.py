@@ -12,6 +12,12 @@ from .capability import (
     step_profile,
 )
 from .line import BardoLine, LineState, TransitionMode
+from .living_process import (
+    OrientationAction,
+    OrientationEvidence,
+    OrientationResult,
+    evaluate_orientation,
+)
 from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
 from .stochastic import (
@@ -58,6 +64,10 @@ __all__ = [
     "flow_profile",
     "step_capability_mode",
     "step_profile",
+    "OrientationAction",
+    "OrientationEvidence",
+    "OrientationResult",
+    "evaluate_orientation",
     "StochasticCapabilityState",
     "TaggedCapabilitySignal",
     "step_stochastic_capability",
