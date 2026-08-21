@@ -1,200 +1,249 @@
 # Native evidence packet — BardoCompute v0.2
 
-Evidence commit for the joint trigram policy: `0c5b6f2a72f16c9b3fca7da44e393070dc1b46fa`
+Latest evidence commit: `a699462ea650b11698020cf5c8713d13a1de6b4f`
 
-CI run: `32475013362`
+Latest CI run: `32475388543`
 
 Environment:
 
 - Ubuntu 24.04 hosted runners
-- C compiler invoked as `cc -O3 -std=c11 -Wall -Wextra -pedantic`
 - two independent CI matrix jobs
-- Python test suite remained green: `18 passed`
+- Python 3.11 and 3.12
+- C compiler invoked with `-O3`
+- Python test suite: `18 passed` on both jobs
 
-This document records native C results separately from the Python reference-object results because the Python object overhead is not representative of a compact processor-level representation.
+This packet deliberately records positive and negative results. The project should only keep claims that survive equal-information and optimized-control comparisons.
 
-## 1. Packed transition line
+## 1. Transition continuity changes correctness
 
-The v0.2 transition semantics are encoded as one byte carrying three logical fields:
+BardoCompute v0.2 distinguishes transitions that share the same endpoints but differ in continuity.
+
+In the synthetic recovery/dispatch workload:
+
+- endpoint-only state allowed 50,000 actions and produced 25,000 false allows;
+- endpoint plus external continuity lookup allowed 25,000 with zero false allows;
+- Bardo inline continuity allowed 25,000 with zero false allows.
+
+The defensible semantic result is therefore:
+
+> Transition provenance can be operational state rather than descriptive logging when downstream actions depend on how a state was reached.
+
+This is a correctness result, not a speed claim.
+
+## 2. Packed transition line
+
+The six valid v0.2 line states fit in a byte carrying three logical fields:
 
 `[source][target][discontinuity]`
 
 A conventional explicit C struct carrying the same three `uint8_t` fields occupies three bytes per event in this benchmark. The packed representation occupies one byte per event.
 
-Workload:
+Latest native workload:
 
-- 20,000,000 events
-- 8 repeated scans
-- equal decision semantics
-- checksum verified
+- 20,000,000 events;
+- 8 repeated scans;
+- equal decision semantics;
+- checksum verified.
 
-### Runner A
+### Python 3.11 matrix runner
 
-| representation | bytes/event | total bytes | build | scan avg |
-| --- | ---: | ---: | ---: | ---: |
-| explicit equal-information struct | 3 | 60,000,000 | `0.019765 s` | `0.015140 s` |
-| packed transition byte | 1 | 20,000,000 | `0.013467 s` | `0.003570 s` |
+- explicit struct: 60 MB, scan `0.010035 s`;
+- packed byte: 20 MB, scan `0.002926 s`;
+- memory ratio: `0.333x`;
+- packed scan ratio: `0.292x` (~3.42x faster).
 
-Ratios:
+### Python 3.12 matrix runner
 
-- memory: `0.333x`
-- packed build / explicit build: `0.681x`
-- packed scan / explicit scan: `0.236x`
-- equivalent scan speedup: about `4.24x`
-
-### Runner B
-
-| representation | bytes/event | total bytes | build | scan avg |
-| --- | ---: | ---: | ---: | ---: |
-| explicit equal-information struct | 3 | 60,000,000 | `0.016157 s` | `0.009699 s` |
-| packed transition byte | 1 | 20,000,000 | `0.011449 s` | `0.002937 s` |
-
-Ratios:
-
-- memory: `0.333x`
-- packed build / explicit build: `0.709x`
-- packed scan / explicit scan: `0.303x`
-- equivalent scan speedup: about `3.30x`
+- explicit struct: 60 MB, scan `0.010010 s`;
+- packed byte: 20 MB, scan `0.002917 s`;
+- memory ratio: `0.333x`;
+- packed scan ratio: `0.291x` (~3.43x faster).
 
 ### Interpretation
 
-This is a reproducible native memory-layout result: the same transition information can be retained in one byte instead of three byte-sized fields, and the denser representation scans materially faster in this synthetic workload.
+This is a reproducible memory-layout result. It does **not** show that Bardo-specific mathematics makes ordinary bit packing faster. Conventional engineering can pack the same fields. The research question is whether transition semantics are useful enough to deserve first-class compact storage.
 
-This is **not** evidence that Bardo-specific mathematics makes ordinary bit packing faster. A conventional engineer can also pack three fields into one byte. The BardoCompute contribution being tested here is the transition-state semantic model and whether its useful information admits a compact representation.
+## 3. Trigram state space
 
-## 2. Trigram byte
+v0.2 has six valid semantic line states.
 
-v0.2 currently has six valid semantic line states.
-
-Therefore a three-line state space contains:
+A three-line group therefore has:
 
 `6^3 = 216`
 
-possible states.
+possible valid states.
 
-Because `216 < 256`, the entire three-line transition-aware group fits in one `uint8_t` using radix-6 encoding:
+Because `216 < 256`, a complete transition-aware three-line group fits in one byte using radix-6 encoding:
 
 `trigram = a + 6*b + 36*c`
 
-where each line is represented by a dense digit `0..5`.
+where each line is a dense digit `0..5`.
 
-Compared with three independent one-byte line codes:
+This gives a natural byte-sized state space for a three-line group. The arithmetic fact is generic: any six-symbol alphabet grouped in threes has 216 combinations.
 
-- independent lines: 3 bytes per group
-- trigram code: 1 byte per group
-- memory ratio: `0.333x`
+## 4. Negative control — simple independent operation
 
-Workload:
+For a simple operation that can be evaluated independently on each line, the trigram representation saves memory but loses speed.
 
-- 24,000,000 semantic line states
-- 8,000,000 trigram states
-- 8 repeated scans
-- checksum equivalence required
+Latest results:
 
-## 3. Negative control — simple independent operation
+### Runner 3.11
 
-The first trigram operation merely counted a simple per-line condition. This is deliberately a weak use case for grouping because each line can be processed independently.
+- independent line scan: `0.003548 s`;
+- trigram lookup: `0.006636 s`;
+- trigram ratio: `1.871x` slower.
 
-### Runner A
+### Runner 3.12
 
-- independent line scan: `0.004301 s`
-- trigram lookup scan: `0.007217 s`
-- trigram / line ratio: `1.678x`
-
-### Runner B
-
-- independent line scan: `0.003546 s`
-- trigram lookup scan: `0.007039 s`
-- trigram / line ratio: `1.985x`
+- independent line scan: `0.003502 s`;
+- trigram lookup: `0.007029 s`;
+- trigram ratio: `2.007x` slower.
 
 ### Verdict
 
-The trigram representation is about 3x denser but roughly 1.7–2.0x slower for this simple independent operation.
+Do not use trigram grouping for work that is naturally line-independent solely because the representation is denser.
 
-Density alone is not enough to justify using a grouped state representation.
+## 5. Joint three-line policy versus independent lines
 
-## 4. Joint three-line policy
-
-The second native experiment uses a synthetic policy that genuinely depends on the three lines as one group.
-
-The policy allows a group only when:
+A synthetic group policy was then chosen that genuinely depends on all three lines:
 
 1. no line is discontinuous;
 2. at least two target values are `1`;
 3. at least one line is an actual transition.
 
-The exact rule is not claimed to be special. Its purpose is to test a class of operations whose result depends on the joint three-line state.
+Two paths were compared:
 
-Two execution paths are compared:
+- read three independent line bytes and evaluate the predicate;
+- read one radix-6 trigram byte and index a 216-entry policy table.
 
-### Independent-line path
+Latest results:
 
-Read three line bytes and evaluate the joint predicate from their fields.
+### Runner 3.11
 
-### Trigram path
+- line evaluation: `0.018773 s`;
+- trigram lookup: `0.007172 s`;
+- ratio: `0.382x` (~2.62x faster).
 
-Read one radix-6 trigram byte and index a precomputed 216-entry policy table.
+### Runner 3.12
 
-Both paths produce the same checksum.
+- line evaluation: `0.018746 s`;
+- trigram lookup: `0.007175 s`;
+- ratio: `0.383x` (~2.61x faster).
 
-### Runner A
+This is a real result, but its scope is narrow: the trigram lookup beats **recomputing the group predicate from three separate line records**.
 
-- independent-line joint policy: `0.015289 s`
-- trigram joint-policy lookup: `0.006833 s`
-- trigram / line ratio: `0.447x`
-- equivalent speedup: about `2.24x`
+It does not establish superiority over an optimized conventional grouped state machine.
 
-Equivalent throughput:
+## 6. Strong equal-information grouped control
 
-- line path: `1,569.709 million semantic lines/s`
-- trigram path: `3,512.198 million semantic lines/s`
+The stronger control gives conventional computing the same opportunity to group state and use a lookup table.
 
-### Runner B
+### Generic grouped representation
 
-- independent-line joint policy: `0.018871 s`
-- trigram joint-policy lookup: `0.007212 s`
-- trigram / line ratio: `0.382x`
-- equivalent speedup: about `2.62x`
+Three 3-bit line codes are packed into 9 logical bits and stored in `uint16_t`:
 
-Equivalent throughput:
+- 16 storage bits/group;
+- 512-entry lookup space;
+- same 216 valid semantic states used by the workload.
 
-- line path: `1,271.817 million semantic lines/s`
-- trigram path: `3,327.782 million semantic lines/s`
+### Dense radix-6 representation
 
-## 5. Current native verdict
+The 216 valid states are stored directly in `uint8_t`:
 
-The strongest result so far is workload-specific:
+- 8 storage bits/group;
+- 216-entry lookup table;
+- same policy and same checksum.
 
-> A three-line, six-state-per-line group can be represented in one byte. For a joint predicate over all three lines, a 216-state lookup representation was about 2.24–2.62x faster than evaluating the same predicate from three independent packed line bytes on two CI runners, while using one third of the retained state memory.
+The benchmark warms both paths and alternates measurement order on every repeat to reduce order, frequency, and thermal bias.
 
-The same grouped representation was slower for a simple independent per-line operation.
+### Latest runner 3.11
 
-This distinction matters. It suggests that any processor-level value is likely to come from **group-native operations**, not from replacing every binary operation with a trigram operation.
+Generic `uint16_t` group:
 
-## 6. What belongs to the model, and what is generic engineering
+- retained memory: 32 MB;
+- build: `0.077721 s`;
+- scan: `0.005765 s`;
+- throughput: `2775.292 M groups/s`.
 
-Generic facts:
+Radix-6 `uint8_t` group:
 
-- bit packing is ordinary computer engineering;
-- radix encoding is ordinary mathematics;
-- small lookup tables are ordinary implementation techniques;
-- any six-state alphabet grouped in threes has `6^3 = 216` combinations.
+- retained memory: 16 MB;
+- build: `0.074296 s`;
+- scan: `0.013591 s`;
+- throughput: `1177.258 M groups/s`.
+
+Ratios:
+
+- memory: `0.500x`;
+- build: `0.956x`;
+- scan: `2.357x` slower.
+
+### Latest runner 3.12
+
+Generic `uint16_t` group:
+
+- retained memory: 32 MB;
+- build: `0.077061 s`;
+- scan: `0.005748 s`;
+- throughput: `2783.626 M groups/s`.
+
+Radix-6 `uint8_t` group:
+
+- retained memory: 16 MB;
+- build: `0.075013 s`;
+- scan: `0.013623 s`;
+- throughput: `1174.468 M groups/s`.
+
+Ratios:
+
+- memory: `0.500x`;
+- build: `0.973x`;
+- scan: `2.370x` slower.
+
+### Compiler evidence
+
+With `-fopt-info-vec-optimized`, GCC reports a loop in `group_control.c` vectorized using 16-byte vectors. The grouped-control speed gap survives warmup and alternating measurement order, so the earlier trigram speedup cannot be treated as a general grouped-state advantage.
+
+## 7. Current native verdict
+
+The current evidence supports four separate statements:
+
+1. **Semantic utility:** continuity information prevents invalid downstream decisions in the recovery workload.
+2. **Line density:** the transition semantics admit compact packed storage, and compact storage can materially beat a three-field explicit struct.
+3. **Trigram density:** six states per line give 216 three-line states, allowing the whole group to fit in one byte — 2x smaller than the fair `uint16_t` 9-bit grouped control and 3x smaller than three independent line bytes.
+4. **No general trigram speed win yet:** the trigram lookup beats recomputation from three independent line records, but loses by about 2.36–2.37x to an optimized equal-information grouped `uint16_t` lookup on the current GCC/runner setup.
+
+Therefore the strongest defensible statement is:
+
+> BardoCompute has demonstrated useful transition semantics and compact state representations. Three-line grouping can reduce retained memory and can amortize multi-line policy computation versus independent records, but no speed advantage over an optimized conventional grouped state machine has yet been established.
+
+## 8. What is generic engineering vs project-specific research
+
+Generic engineering/mathematics:
+
+- bit packing;
+- radix encoding;
+- finite-state machines;
+- lookup tables;
+- `6^3 = 216`;
+- packing 216 ordinals into one byte.
 
 BardoCompute-specific research questions:
 
-- whether transition direction and continuity deserve first-class state;
-- whether useful workloads naturally consume those transition states in three-line groups;
-- whether the grouping yields reusable operations, proofs, recovery semantics, or scheduling advantages;
-- whether a hardware/software ISA can expose those semantics without paying conversion cost.
+- whether direction plus continuity are useful first-class transition semantics;
+- which real workloads repeatedly need that information;
+- whether three-line grouping is a useful native operation boundary rather than only a compression trick;
+- whether provenance/recovery/scheduling rules can be evaluated with less total memory traffic or coordination;
+- whether an ISA or accelerator can exploit the state space without conversion overhead.
 
-The I Ching trigram is treated as inspiration for a three-line grouping and transition ontology, not as a claim that the historical text specifies modern processor architecture.
+The I Ching trigram is inspiration for the three-line abstraction. It is not presented as a historical processor specification. "Bardo" is the project term for explicit transitional state; it is not presented as part of the I Ching.
 
-## 7. Next falsification tests
+## 9. Next falsification tests
 
-1. Compare trigram lookup against an optimized conventional packed three-field/group implementation, not only independent bytes.
-2. Test several unrelated joint predicates to determine whether the speedup generalizes beyond one synthetic policy.
-3. Generate trigram state directly rather than packing from pre-existing line bytes and measure end-to-end lifecycle cost.
-4. Measure cache misses, vectorization, branches, instructions, and bytes read with native performance counters where available.
-5. Test randomized state distributions and discontinuity rates.
-6. If group-native wins survive those controls, test a six-line state. With six semantic states per line, `6^6 = 46,656`, which fits in 16 bits and is exactly two trigram bytes.
-7. Keep Dragon lifecycle and Five-Phase operation semantics deferred until the group primitive survives these controls.
+1. Explain the `uint16_t` grouped-control advantage by comparing vectorized and `-fno-tree-vectorize` builds and inspecting compiler output.
+2. Test larger retained state sets where the 16 MB vs 32 MB footprint crosses more cache/memory-hierarchy boundaries.
+3. Test multiple unrelated joint policies rather than one synthetic predicate.
+4. Generate grouped state directly and measure complete build + consume lifecycle cost.
+5. Measure instructions, branches, cache misses, and bytes read where performance counters are available.
+6. Test randomized state distributions and discontinuity rates.
+7. Do **not** add Dragon lifecycle or Five-Phase operation semantics to the execution core until the primitive/group layer survives stronger controls.
