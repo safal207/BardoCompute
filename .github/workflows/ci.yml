@@ -31,6 +31,7 @@ jobs:
       - run: python benchmarks/phase_age.py
       - run: python benchmarks/temporal_state16.py
       - run: python benchmarks/capability_flow.py
+      - run: python benchmarks/capability_recovery.py
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_bench.c -o native/bardo_bench
       - run: ./native/bardo_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_tao_bench.c -o native/bardo_tao_bench
@@ -47,6 +48,8 @@ jobs:
       - run: ./native/temporal_state16_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/capability_state16_bench.c -o native/capability_state16_bench
       - run: ./native/capability_state16_bench
+      - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/capability_recovery_bench.c -o native/capability_recovery_bench
+      - run: ./native/capability_recovery_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/policy_lut_sweep.c -o native/policy_lut_sweep
       - run: ./native/policy_lut_sweep
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/trigram_bench.c -o native/trigram_bench
