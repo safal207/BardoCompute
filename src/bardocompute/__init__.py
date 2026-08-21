@@ -14,6 +14,11 @@ from .capability import (
 from .line import BardoLine, LineState, TransitionMode
 from .phase_age import PhaseAgeBucket, PhaseAgeSignature, phase_age_bucket
 from .phase_edge import PhaseEdgeSignature
+from .stochastic import (
+    StochasticCapabilityState,
+    TaggedCapabilitySignal,
+    step_stochastic_capability,
+)
 from .tao import (
     DecisionEvidence,
     EvidenceKind,
@@ -53,6 +58,9 @@ __all__ = [
     "flow_profile",
     "step_capability_mode",
     "step_profile",
+    "StochasticCapabilityState",
+    "TaggedCapabilitySignal",
+    "step_stochastic_capability",
     "DecisionEvidence",
     "EvidenceKind",
     "OrientedEvidence",
