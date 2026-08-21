@@ -2,7 +2,7 @@
 
 ## Status
 
-Experimental, falsifiable decision-layer semantics for BardoCompute.
+Experimental, falsifiable decision/orientation-layer semantics for BardoCompute.
 
 This document uses **Tao** as project terminology for an oriented but unresolved decision state. It is not a claim that historical Daoist texts define ternary computer logic.
 
@@ -13,30 +13,24 @@ Binary decision systems often collapse an unresolved situation into a terminal v
 - optimistic mapping: unknown -> allow;
 - conservative mapping: unknown -> deny.
 
-Both are lossy when the evidence is genuinely incomplete.
+Both are lossy when evidence is genuinely incomplete.
 
-BardoCompute already models how a state was reached (direction and continuity). Tao v0.1 asks a separate question:
+BardoCompute already models how a state was reached (direction and continuity). Tao asks two separate questions:
 
-> Can a downstream decision remain explicitly non-terminal until the evidence required for a terminal decision arrives?
+1. Can a downstream decision remain explicitly non-terminal until required evidence arrives?
+2. Can that non-terminal state retain **orientation** — what evidence is missing and which future event can settle it?
 
 ## Decision alphabet
 
 `ALLOW | DEFER | DENY`
 
-`DEFER` is not a third truth value and does not predict the eventual result. It means:
+`DEFER` is not a third truth value and does not predict the eventual result. It means no terminal claim should be emitted yet.
 
-- current authority is still valid;
-- continuity is preserved;
-- the outcome required to settle the decision is not yet known;
-- no terminal claim should be emitted yet.
+## Tao v0.1 — simple defer
 
-## Minimal rule
-
-Given evidence:
+Given:
 
 `E = (authority_valid, continuity_preserved, outcome)`
-
-where `outcome in {true, false, unresolved}`:
 
 1. invalid authority -> `DENY`;
 2. broken continuity -> `DENY`;
@@ -44,94 +38,141 @@ where `outcome in {true, false, unresolved}`:
 4. resolved success -> `ALLOW`;
 5. resolved failure -> `DENY`.
 
-## Separation from Bardo line state
+### Forced-binary benchmark
 
-Tao v0.1 is deliberately **not** added as a seventh line state.
-
-The Bardo v0.2 line alphabet remains six semantic states, so the existing trigram experiment remains:
-
-`6^3 = 216`
-
-Tao sits above the line/trigram representation as a decision/orientation layer. This isolates its utility and cost from the state-density experiments.
-
-## Benchmark A — forced binary terminalization
-
-`benchmarks/tao_defer.py` compares three policies on a 120,000-case workload containing 40,000 genuinely unresolved outcomes.
+`benchmarks/tao_defer.py` uses 120,000 cases, including 40,000 genuinely unresolved outcomes.
 
 Latest Python 3.12 CI result:
 
-- binary optimistic (`pending -> allow`): **20,000 false allows**, 0 false denies;
-- binary conservative (`pending -> deny`): 0 false allows, **20,000 false denies**;
-- Tao (`pending -> defer`): **0 premature false allows**, **0 premature false denies**;
-- Tao deferred 40,000 cases and resolved all 40,000 correctly after outcome evidence arrived.
+- optimistic binary (`pending -> allow`): **20,000 false allows**;
+- conservative binary (`pending -> deny`): **20,000 false denies**;
+- Tao: **0 premature false allows**, **0 premature false denies**;
+- Tao deferred 40,000 cases and resolved all 40,000 correctly after evidence arrived.
 
-Timing in that run:
+This demonstrates the value of **not forcing an unresolved state into a terminal decision**.
 
-- optimistic binary: `0.025096 s`;
-- conservative binary: `0.024742 s`;
-- Tao reference API including second-pass resolution: `0.161669 s`.
+## Equal-information PENDING control
 
-### Interpretation
-
-The useful result is semantic, not predictive:
-
-> When an outcome is genuinely unresolved, refusing to emit a terminal decision can avoid the error introduced by forcing unknown into either allow or deny.
-
-The cost is explicit: deferral requires later resolution and the current Python reference implementation is slower.
-
-## Benchmark B — equal-information conventional PENDING control
-
-`benchmarks/tao_equal_information_control.py` compares Tao with a conventional three-state machine:
+`benchmarks/tao_equal_information_control.py` compares Tao with conventional:
 
 `ALLOW | PENDING | DENY`
 
-Both implementations receive the same evidence and use the same two-pass resolution semantics.
+Latest Python 3.12 result:
 
-Latest Python 3.12 CI result:
+- both pending/deferred: 40,000;
+- both errors: 0;
+- both resolved correctly: 40,000;
+- conventional runtime: `0.035434 s`;
+- Tao reference runtime: `0.184187 s`;
+- Tao / conventional: **5.198x**.
 
-- conventional pending decisions: 40,000;
-- Tao deferred decisions: 40,000;
-- errors: 0 for both;
-- deferred/pending cases resolved correctly: 40,000 for both;
-- conventional runtime: `0.027285 s`;
-- Tao runtime: `0.156191 s`;
-- Tao / conventional runtime: **5.724x**.
-
-`semantic_equivalence=true` is asserted by the benchmark.
+`semantic_equivalence=true`.
 
 ### Verdict
 
-Tao v0.1 has **not** demonstrated a computational advantage over an equally informative conventional `PENDING` state machine.
+Simple `DEFER` is useful against forced binary terminalization, but it is **not novel computational behavior** compared with an equally informative conventional pending-state machine. The current Python Tao API is also slower.
 
-The defensible claim is narrower:
+## Tao v0.2 hypothesis — oriented defer
 
-> Tao is currently a project ontology/API for explicit non-terminal orientation. Its semantic value is the refusal to collapse unresolved evidence into a false terminal claim. That capability is conventional when compared with an explicit pending-state machine, and the current Python Tao API is slower.
+The stronger form records *why* a decision is unresolved.
 
-This negative control is intentional.
+Evidence dimensions are encoded as a bit mask:
 
-## Research direction
+- `AUTHORITY = 001`
+- `CONTINUITY = 010`
+- `OUTCOME = 100`
 
-The next useful question is no longer whether `DEFER` is valuable by itself. Conventional systems already know how to represent `PENDING`.
+An oriented deferred state therefore carries:
 
-The stronger hypothesis is whether Tao becomes useful when it carries **orientation**, not merely incompleteness. For example, a deferred state may retain:
+`Tao = (DEFER, missing_evidence_mask)`
 
-- which evidence is missing;
-- which transitions are still admissible;
-- what observation would settle the state;
-- an expiry/deadline;
-- provenance binding to the Bardo transition that produced the unresolved condition.
+Example:
 
-A candidate form is:
+`DEFER + AUTHORITY + OUTCOME`
 
-`Tao = (decision=DEFER, missing_evidence, admissible_edges, settle_condition, deadline, provenance)`
+means that continuity is already known-good, but authority and outcome evidence are still required.
 
-That object should then be compared against an equally informative conventional workflow/state-machine representation.
+This is implemented by `OrientedTao` / `EvidenceKind` in `src/bardocompute/tao.py`.
 
-## Next controls
+## Orientation-routing benchmark
 
-1. Add a cost function for false allow, false deny, and defer latency.
-2. Vary the fraction of unresolved outcomes.
-3. Vary time-to-resolution distributions.
-4. Add **oriented defer**: encode what evidence can settle the state and what transitions remain legal.
-5. Compare oriented Tao against an equally informative conventional pending-workflow record.
-6. Only claim performance/compactness if it survives that equal-information control.
+`benchmarks/tao_orientation_routing.py` creates 150,000 deferred records:
+
+- 50,000 waiting for authority;
+- 50,000 waiting for continuity;
+- 50,000 waiting for outcome.
+
+Then an `OUTCOME` evidence event arrives.
+
+### Plain undifferentiated PENDING queue
+
+- records touched: **150,000**;
+- relevant/resolved: 50,000;
+- route time: `0.006790 s`.
+
+### Oriented Tao bucket
+
+- records touched: **50,000**;
+- relevant/resolved: 50,000;
+- touch ratio vs plain queue: **0.333x**;
+- index build: `0.425283 s`;
+- route time: `0.002339 s`.
+
+### Equal-information conventional indexed PENDING
+
+- records touched: **50,000**;
+- relevant/resolved: 50,000;
+- index build: `0.145326 s`;
+- route time: `0.002257 s`.
+
+`indexed_semantic_equivalence=true`.
+
+### Interpretation
+
+Orientation can reduce event fan-out relative to an undifferentiated pending queue, but this is not Tao-specific. A conventional indexed pending workflow carrying the same missing-evidence metadata achieves the same routing and is cheaper in the current Python reference implementation.
+
+Therefore the defensible result is:
+
+> The useful object is not a mystical third truth value. It is an unresolved state that carries explicit settlement orientation. That orientation can reduce irrelevant reevaluation, but no advantage over an equally informative conventional indexed state machine has yet been shown.
+
+## Separation from Bardo line state
+
+Tao is deliberately **not** a seventh Bardo line state.
+
+The Bardo v0.2 line alphabet remains six semantic states, preserving:
+
+`6^3 = 216`
+
+for the existing trigram experiments.
+
+Tao sits above that representation as a decision/orientation layer.
+
+## Next research target: Bardo + Tao compact record
+
+The next falsifiable hypothesis is to combine transition provenance and settlement orientation without external metadata:
+
+`Record = (source, target, discontinuity, missing_evidence_mask)`
+
+The current fields require:
+
+- 3 logical bits for Bardo transition semantics;
+- 3 bits for Tao missing-evidence orientation.
+
+So the combined semantic record fits in **6 logical bits**, leaving two bits free in a byte for future proof/expiry classes or reserved states.
+
+The next benchmark should compare:
+
+1. external transition metadata + external pending index;
+2. equally informative conventional packed record;
+3. Bardo+Tao 6-bit inline record;
+4. group-native/trigram forms of those records.
+
+The critical control remains the same: if an equally informative generic 6-bit record performs identically, the performance property belongs to compact inline representation, not to the Bardo/Tao names.
+
+## Current conclusion
+
+- **Yin/Yang** can remain the settled endpoint distinction.
+- **Bardo** represents how the endpoint is being/recently was reached.
+- **Tao** is most useful here as settlement orientation: what is still missing before the system may safely collapse to a terminal decision.
+
+That three-layer ontology is worth testing further, but claims remain limited to executable evidence.
