@@ -38,6 +38,7 @@ jobs:
       - run: python benchmarks/observation_payback.py
       - run: python benchmarks/calibration_aware_payback.py
       - run: python benchmarks/adaptive_probe_cadence.py
+      - run: python benchmarks/hazard_aware_cadence.py
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_bench.c -o native/bardo_bench
       - run: ./native/bardo_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_tao_bench.c -o native/bardo_tao_bench
