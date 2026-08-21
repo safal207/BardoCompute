@@ -42,6 +42,30 @@ static uint8_t is_allowed_line(uint8_t code) {
     return (uint8_t)(((code & 0x2u) != 0u) && ((code & 0x1u) == 0u));
 }
 
+static uint8_t is_transition_line(uint8_t code) {
+    const uint8_t source = (uint8_t)((code >> 2u) & 1u);
+    const uint8_t target = (uint8_t)((code >> 1u) & 1u);
+    return (uint8_t)(source != target);
+}
+
+static uint8_t joint_policy(uint8_t a, uint8_t b, uint8_t c) {
+    const uint8_t any_discontinuous = (uint8_t)((a | b | c) & 0x1u);
+    const unsigned target_count =
+        (unsigned)((a >> 1u) & 1u) +
+        (unsigned)((b >> 1u) & 1u) +
+        (unsigned)((c >> 1u) & 1u);
+    const uint8_t any_transition = (uint8_t)(
+        is_transition_line(a) | is_transition_line(b) | is_transition_line(c)
+    );
+
+    /*
+     * Synthetic group guard: no causal break, at least two target-1 lines,
+     * and at least one actual transition. The point is not this exact policy;
+     * it is a joint predicate that depends on all three transition states.
+     */
+    return (uint8_t)(!any_discontinuous && target_count >= 2u && any_transition);
+}
+
 static uint8_t pack_trigram_digits(uint8_t a, uint8_t b, uint8_t c) {
     return (uint8_t)(a + 6u * b + 36u * c);
 }
@@ -62,6 +86,27 @@ static uint64_t scan_trigrams(
     uint64_t allowed = 0;
     for (size_t i = 0; i < n_trigrams; ++i) {
         allowed += allowed_count[trigrams[i]];
+    }
+    return allowed;
+}
+
+static uint64_t scan_joint_policy_lines(const uint8_t *lines, size_t n_trigrams) {
+    uint64_t allowed = 0;
+    for (size_t i = 0; i < n_trigrams; ++i) {
+        const size_t base = i * 3u;
+        allowed += joint_policy(lines[base], lines[base + 1u], lines[base + 2u]);
+    }
+    return allowed;
+}
+
+static uint64_t scan_joint_policy_trigrams(
+    const uint8_t *trigrams,
+    size_t n_trigrams,
+    const uint8_t policy_allow[216]
+) {
+    uint64_t allowed = 0;
+    for (size_t i = 0; i < n_trigrams; ++i) {
+        allowed += policy_allow[trigrams[i]];
     }
     return allowed;
 }
@@ -116,15 +161,19 @@ int main(void) {
     const double trigram_build = now_seconds() - started;
 
     uint8_t allowed_count[216];
+    uint8_t policy_allow[216];
     for (unsigned value = 0; value < 216u; ++value) {
         unsigned x = value;
+        uint8_t codes[3];
         uint8_t count = 0;
         for (unsigned position = 0; position < 3u; ++position) {
             const uint8_t digit = (uint8_t)(x % 6u);
             x /= 6u;
-            count = (uint8_t)(count + is_allowed_line(line_code_from_digit[digit]));
+            codes[position] = line_code_from_digit[digit];
+            count = (uint8_t)(count + is_allowed_line(codes[position]));
         }
         allowed_count[value] = count;
+        policy_allow[value] = joint_policy(codes[0], codes[1], codes[2]);
     }
 
     uint64_t line_checksum = 0;
@@ -149,10 +198,34 @@ int main(void) {
         return 4;
     }
 
+    uint64_t line_policy_checksum = 0;
+    started = now_seconds();
+    for (unsigned r = 0; r < repeats; ++r) {
+        line_policy_checksum += scan_joint_policy_lines(lines, n_trigrams);
+    }
+    const double line_policy_total = now_seconds() - started;
+
+    uint64_t trigram_policy_checksum = 0;
+    started = now_seconds();
+    for (unsigned r = 0; r < repeats; ++r) {
+        trigram_policy_checksum += scan_joint_policy_trigrams(trigrams, n_trigrams, policy_allow);
+    }
+    const double trigram_policy_total = now_seconds() - started;
+
+    if (line_policy_checksum != trigram_policy_checksum) {
+        fprintf(stderr, "policy checksum mismatch: lines=%" PRIu64 " trigrams=%" PRIu64 "\n",
+                line_policy_checksum, trigram_policy_checksum);
+        free(lines);
+        free(trigrams);
+        return 5;
+    }
+
     const size_t line_bytes = n_lines * sizeof(*lines);
     const size_t trigram_bytes = n_trigrams * sizeof(*trigrams);
     const double line_scan = line_scan_total / repeats;
     const double trigram_scan = trigram_scan_total / repeats;
+    const double line_policy_scan = line_policy_total / repeats;
+    const double trigram_policy_scan = trigram_policy_total / repeats;
 
     printf("lines=%zu\n", n_lines);
     printf("trigrams=%zu\n", n_trigrams);
@@ -163,17 +236,22 @@ int main(void) {
     printf("[independent packed lines]\n");
     printf("total_bytes=%zu\n", line_bytes);
     printf("build_seconds=%.6f\n", line_build);
-    printf("scan_seconds_avg=%.6f\n\n", line_scan);
+    printf("simple_scan_seconds_avg=%.6f\n", line_scan);
+    printf("joint_policy_seconds_avg=%.6f\n\n", line_policy_scan);
 
     printf("[radix-6 trigram byte + 216-entry lookup]\n");
     printf("total_bytes=%zu\n", trigram_bytes);
     printf("pack_from_lines_seconds=%.6f\n", trigram_build);
-    printf("scan_seconds_avg=%.6f\n\n", trigram_scan);
+    printf("simple_scan_seconds_avg=%.6f\n", trigram_scan);
+    printf("joint_policy_seconds_avg=%.6f\n\n", trigram_policy_scan);
 
     printf("trigram_memory_vs_lines=%.3fx\n", (double)trigram_bytes / (double)line_bytes);
-    printf("trigram_scan_vs_lines=%.3fx\n", trigram_scan / line_scan);
-    printf("line_scan_throughput_mlines_s=%.3f\n", (double)n_lines / line_scan / 1000000.0);
-    printf("trigram_scan_equivalent_mlines_s=%.3f\n", (double)n_lines / trigram_scan / 1000000.0);
+    printf("trigram_simple_scan_vs_lines=%.3fx\n", trigram_scan / line_scan);
+    printf("trigram_joint_policy_vs_lines=%.3fx\n", trigram_policy_scan / line_policy_scan);
+    printf("line_simple_throughput_mlines_s=%.3f\n", (double)n_lines / line_scan / 1000000.0);
+    printf("trigram_simple_equivalent_mlines_s=%.3f\n", (double)n_lines / trigram_scan / 1000000.0);
+    printf("line_policy_equivalent_mlines_s=%.3f\n", (double)n_lines / line_policy_scan / 1000000.0);
+    printf("trigram_policy_equivalent_mlines_s=%.3f\n", (double)n_lines / trigram_policy_scan / 1000000.0);
     printf("encoding_note=6^3=216 is generic radix packing; the trigram supplies a natural three-line grouping\n");
 
     free(lines);
