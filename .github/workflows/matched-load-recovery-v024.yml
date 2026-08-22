@@ -1,0 +1,59 @@
+name: Matched-Load Recovery v0.24
+
+on:
+  push:
+    branches:
+      - research/v0.24-matched-recovery
+    paths:
+      - benchmarks/matched_load_recovery_v024.py
+      - docs/v0.24-trigger.txt
+      - .github/workflows/matched-load-recovery-v024.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Matched-Load Recovery v0.24
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python benchmarks/matched_load_recovery_v024.py | tee /tmp/matched-load-recovery-v024.log
+          code=${PIPESTATUS[0]}
+
+          awk '/^\[overall\]$/{show=1} show{print}' /tmp/matched-load-recovery-v024.log > /tmp/overall.txt
+          {
+            echo "Hosted v0.24 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/overall.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 5 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/matched-load-recovery-v024.log; then
+            echo 'v0.24 hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"
