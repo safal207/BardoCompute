@@ -1,0 +1,2 @@
+Trigger isolated hosted execution for v0.27 Phase-Localized Support Value.
+No benchmark semantics, thresholds, seeds, or actuator magnitudes changed.
