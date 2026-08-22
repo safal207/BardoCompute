@@ -1,0 +1,59 @@
+name: Rate-First Recovery v0.28
+
+on:
+  push:
+    branches:
+      - research/v0.28-rate-first-recovery
+    paths:
+      - benchmarks/rate_first_recovery_v028.py
+      - .github/workflows/rate-first-recovery-v028.yml
+      - docs/v0.28-rate-first-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Rate-First Recovery v0.28
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python benchmarks/rate_first_recovery_v028.py | tee /tmp/rate-first-v028.log
+          code=${PIPESTATUS[0]}
+
+          awk '/^\[overall\]$/{show=1} show{print}' /tmp/rate-first-v028.log > /tmp/overall.txt
+          {
+            echo "Hosted v0.28 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/overall.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 15 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/rate-first-v028.log; then
+            echo 'v0.28 hypothesis rejected by preregistered criteria; retaining as valid scientific evidence.'
+            exit 0
+          fi
+          exit "$code"
