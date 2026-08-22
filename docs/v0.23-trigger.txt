@@ -1,0 +1,2 @@
+Trigger-only file for isolated hosted execution of the preregistered v0.23 Recovery Challenge benchmark.
+No benchmark semantics, seeds, thresholds, controller logic, or actuator behavior are defined here.
