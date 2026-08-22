@@ -6,6 +6,7 @@ on:
       - research/v0.27-phase-local-support
     paths:
       - benchmarks/phase_local_support_v027.py
+      - docs/v0.27-trigger.txt
       - .github/workflows/phase-local-support-v027.yml
   workflow_dispatch:
 
