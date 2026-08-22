@@ -44,3 +44,5 @@ jobs:
             echo "commit: $GITHUB_SHA"
           } > /tmp/comment.md
           gh issue comment 12 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
+# Trigger-only workflow metadata change; benchmark/prereg semantics unchanged.
