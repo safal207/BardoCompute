@@ -1,0 +1,2 @@
+Trigger isolated hosted execution of frozen v0.28 Rate-First Component-Specific Recovery.
+No benchmark semantics, thresholds, actuator magnitudes, seeds, or acceptance gates are changed by this file.
