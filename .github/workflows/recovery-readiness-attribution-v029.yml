@@ -1,0 +1,46 @@
+name: Recovery Readiness Attribution v0.29
+
+on:
+  push:
+    branches:
+      - research/v0.29-readiness-attribution
+    paths:
+      - benchmarks/recovery_readiness_attribution_v029.py
+      - .github/workflows/recovery-readiness-attribution-v029.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Recovery Readiness Attribution v0.29
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/recovery_readiness_attribution_v029.py | tee /tmp/v029.log
+          awk '/^\[readiness_attribution\]$/{show=1} show{print}' /tmp/v029.log > /tmp/attribution.txt
+          {
+            echo "Hosted v0.29 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/attribution.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 16 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
