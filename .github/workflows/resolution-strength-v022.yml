@@ -9,6 +9,10 @@ on:
       - .github/workflows/resolution-strength-v022.yml
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
@@ -25,10 +29,25 @@ jobs:
       - run: pytest -q tests/test_exchange.py
       - name: Run Resolution Strength v0.22
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           python benchmarks/resolution_strength_v022.py | tee /tmp/resolution-strength-v022.log
           code=${PIPESTATUS[0]}
+
+          awk '/^\[overall\]$/{show=1} show{print}' /tmp/resolution-strength-v022.log > /tmp/overall.txt
+          {
+            echo "Hosted v0.22 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/overall.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 3 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
           if [ "$code" -eq 0 ]; then
             exit 0
           fi
