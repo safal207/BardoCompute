@@ -43,6 +43,20 @@ jobs:
       - run: python benchmarks/headroom_gate_robustness.py
       - run: python benchmarks/regret_aware_policy_orientation.py
       - run: python benchmarks/recovery_state_transfer.py
+      - name: R1 real work-queue transfer evidence
+        shell: bash
+        run: |
+          set +e
+          python benchmarks/real_work_queue_transfer.py | tee /tmp/real-work-queue-transfer.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/real-work-queue-transfer.log; then
+            echo 'R1 transfer hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_bench.c -o native/bardo_bench
       - run: ./native/bardo_bench
       - run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/bardo_tao_bench.c -o native/bardo_tao_bench
