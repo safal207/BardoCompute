@@ -20,4 +20,17 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: pip install -e .
       - run: pytest -q tests/test_exchange.py
-      - run: python benchmarks/exchange_dynamics.py
+      - name: Run falsification benchmark
+        shell: bash
+        run: |
+          set +e
+          python benchmarks/exchange_dynamics.py | tee /tmp/exchange-dynamics.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/exchange-dynamics.log; then
+            echo 'Hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"
