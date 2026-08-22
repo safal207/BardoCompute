@@ -6,6 +6,7 @@ on:
       - research/v0.22-resolution-strength
     paths:
       - benchmarks/resolution_strength_v022.py
+      - docs/v0.22-trigger.txt
       - .github/workflows/resolution-strength-v022.yml
   workflow_dispatch:
 
