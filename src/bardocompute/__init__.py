@@ -17,6 +17,13 @@ from .capability import (
     step_capability_mode,
     step_profile,
 )
+from .exchange import (
+    ExchangeResult,
+    ExchangeState,
+    ExchangeStep,
+    MembraneCommand,
+    regulate_exchange,
+)
 from .hazard_cadence import (
     HazardCadenceEvidence,
     HazardCadenceResult,
@@ -100,6 +107,11 @@ __all__ = [
     "flow_profile",
     "step_capability_mode",
     "step_profile",
+    "ExchangeResult",
+    "ExchangeState",
+    "ExchangeStep",
+    "MembraneCommand",
+    "regulate_exchange",
     "OrientationAction",
     "OrientationEvidence",
     "OrientationResult",
