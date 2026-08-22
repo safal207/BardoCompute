@@ -1,0 +1,2 @@
+Trigger-only file for isolated hosted execution of the preregistered v0.22 Resolution Strength benchmark.
+No benchmark semantics, seeds, thresholds, controller logic, or actuator behavior are defined here.
