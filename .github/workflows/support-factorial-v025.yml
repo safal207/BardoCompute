@@ -44,3 +44,5 @@ jobs:
             echo "commit: $GITHUB_SHA"
           } > /tmp/comment.md
           gh issue comment 9 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
+# Non-semantic isolated-run trigger after preregistration and benchmark freeze.
