@@ -1,0 +1,46 @@
+name: Continuous Miss Burden v0.26
+
+on:
+  push:
+    branches:
+      - research/v0.26-continuous-burden
+    paths:
+      - benchmarks/continuous_miss_burden_v026.py
+      - .github/workflows/continuous-miss-burden-v026.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Continuous Miss Burden v0.26
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/continuous_miss_burden_v026.py | tee /tmp/continuous-v026.log
+          awk '/^\[causal_continuous\]$/{show=1} show{print}' /tmp/continuous-v026.log > /tmp/causal.txt
+          {
+            echo "Hosted v0.26 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/causal.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 11 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
