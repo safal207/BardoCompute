@@ -1,0 +1,1 @@
+Neutral trigger for the isolated v0.30 Load-Gated Rate Relaxation hosted workflow. No benchmark, policy, threshold, actuator, seed, or acceptance semantics changed.
