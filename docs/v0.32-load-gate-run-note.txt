@@ -1,0 +1,1 @@
+Neutral trigger for the frozen v0.32 diagnostic workflow. No benchmark, controller, seed, threshold, actuator, or interpretation semantics are changed.
