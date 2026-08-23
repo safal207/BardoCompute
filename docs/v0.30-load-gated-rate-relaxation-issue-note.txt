@@ -1,0 +1,1 @@
+v0.30 preregistration is frozen in docs/v0.30-load-gated-rate-relaxation-prereg.md before any v0.30 implementation or result. No v0.29 spent seed may be used for threshold tuning.
