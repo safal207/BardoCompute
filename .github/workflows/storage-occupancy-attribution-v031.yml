@@ -1,0 +1,47 @@
+name: Storage Occupancy Attribution v0.31
+
+on:
+  push:
+    branches:
+      - research/v0.31-storage-attribution
+    paths:
+      - benchmarks/storage_occupancy_attribution_v031.py
+      - .github/workflows/storage-occupancy-attribution-v031.yml
+      - docs/v0.31-storage-attribution-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Storage Occupancy Attribution v0.31
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/storage_occupancy_attribution_v031.py | tee /tmp/v031.log
+          awk '/^\[storage_attribution\]$/{show=1} show{print}' /tmp/v031.log > /tmp/attribution.txt
+          {
+            echo "Hosted v0.31 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/attribution.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 21 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
