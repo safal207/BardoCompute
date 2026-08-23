@@ -1,0 +1,47 @@
+name: Load-Gate Self-Lock v0.32
+
+on:
+  push:
+    branches:
+      - research/v0.32-load-gate-self-lock
+    paths:
+      - benchmarks/load_gate_self_lock_v032.py
+      - .github/workflows/load-gate-self-lock-v032.yml
+      - docs/v0.32-load-gate-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Load-Gate Self-Lock v0.32
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/load_gate_self_lock_v032.py | tee /tmp/v032.log
+          awk '/^\[load_gate_attribution\]$/{show=1} show{print}' /tmp/v032.log > /tmp/attribution.txt
+          {
+            echo "Hosted v0.32 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/attribution.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 23 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
