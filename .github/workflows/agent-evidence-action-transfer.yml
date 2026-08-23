@@ -1,0 +1,22 @@
+name: Agent Evidence Action Transfer Benchmark
+
+on:
+  push:
+    branches:
+      - research/v0.1-executable-algebra
+  pull_request:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - run: python benchmarks/agent_evidence_action_transfer.py

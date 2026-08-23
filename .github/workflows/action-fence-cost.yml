@@ -1,0 +1,23 @@
+name: Native Action Fence Cost Benchmark
+
+on:
+  push:
+    branches:
+      - research/v0.1-executable-algebra
+  pull_request:
+
+jobs:
+  fence-cost:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler-mode: ["o3", "o3-no-vector"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile O3
+        if: matrix.compiler-mode == 'o3'
+        run: cc -O3 -std=c11 -Wall -Wextra -pedantic native/action_fence_cost_bench.c -o native/action_fence_cost_bench
+      - name: Compile O3 no vectorization
+        if: matrix.compiler-mode == 'o3-no-vector'
+        run: cc -O3 -fno-tree-vectorize -std=c11 -Wall -Wextra -pedantic native/action_fence_cost_bench.c -o native/action_fence_cost_bench
+      - run: ./native/action_fence_cost_bench

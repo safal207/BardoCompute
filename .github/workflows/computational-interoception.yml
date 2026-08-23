@@ -1,0 +1,34 @@
+name: Computational Interoception v0.19
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run computational interoception v0.19
+        shell: bash
+        run: |
+          set +e
+          python benchmarks/computational_interoception_v019.py | tee /tmp/computational-interoception-v019.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/computational-interoception-v019.log; then
+            echo 'v0.19 hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"

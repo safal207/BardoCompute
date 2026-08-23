@@ -1,0 +1,24 @@
+name: Recovery Predicate Ablation v0.21
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run recovery predicate ablation v0.21
+        run: |
+          python benchmarks/recovery_predicate_ablation_v021.py | tee /tmp/recovery-predicate-ablation-v021.log
+          grep -q '^ablation_complete=true$' /tmp/recovery-predicate-ablation-v021.log

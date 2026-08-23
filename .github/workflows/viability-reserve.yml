@@ -1,0 +1,36 @@
+name: Viability Reserve Benchmark
+
+on:
+  push:
+    branches:
+      - research/v0.1-executable-algebra
+  pull_request:
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run viability-reserve falsification benchmark
+        shell: bash
+        run: |
+          set +e
+          python benchmarks/viability_reserve.py | tee /tmp/viability-reserve.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/viability-reserve.log; then
+            echo 'Viability-reserve hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"

@@ -1,0 +1,36 @@
+name: Real Work Queue Transfer
+
+on:
+  push:
+    branches:
+      - research/v0.1-executable-algebra
+  pull_request:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run real executed work-queue transfer
+        shell: bash
+        run: |
+          set +e
+          python benchmarks/real_work_queue_transfer.py | tee /tmp/real-work-queue-transfer.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/real-work-queue-transfer.log; then
+            echo 'R1 transfer hypothesis rejected by preregistered criteria; retaining as valid evidence.'
+            exit 0
+          fi
+          exit "$code"
