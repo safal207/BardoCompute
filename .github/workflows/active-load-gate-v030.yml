@@ -1,0 +1,58 @@
+name: Active-Load Gate v0.30
+
+on:
+  push:
+    branches:
+      - research/v0.30-active-load-gate
+    paths:
+      - benchmarks/active_load_gate_v030.py
+      - .github/workflows/active-load-gate-v030.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Active-Load Gate v0.30
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python benchmarks/active_load_gate_v030.py | tee /tmp/v030.log
+          code=${PIPESTATUS[0]}
+
+          awk '/^\[overall\]$/{show=1} show{print}' /tmp/v030.log > /tmp/overall.txt
+          {
+            echo "Hosted v0.30 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/overall.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 19 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
+
+          if [ "$code" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -q '^passes_preregistered_acceptance=false$' /tmp/v030.log; then
+            echo 'v0.30 hypothesis rejected by preregistered criteria; retaining as valid scientific evidence.'
+            exit 0
+          fi
+          exit "$code"
