@@ -1,0 +1,48 @@
+name: Incremental RATE Weaning v0.37
+
+on:
+  push:
+    branches:
+      - research/v0.37-incremental-rate-weaning
+    paths:
+      - benchmarks/incremental_rate_weaning_v037.py
+      - .github/workflows/incremental-rate-weaning-v037.yml
+      - docs/v0.37-incremental-rate-weaning-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Incremental RATE Weaning v0.37
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/incremental_rate_weaning_v037.py | tee /tmp/v037.log
+          awk '/^\[overall\]$/{show=1} show{print}' /tmp/v037.log > /tmp/overall.txt
+          {
+            echo "Hosted v0.37 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/overall.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 29 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
