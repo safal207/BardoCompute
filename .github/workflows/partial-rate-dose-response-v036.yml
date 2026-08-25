@@ -1,0 +1,48 @@
+name: Partial RATE-Withdrawal Dose-Response v0.36
+
+on:
+  push:
+    branches:
+      - research/v0.36-partial-rate-dose-response
+    paths:
+      - benchmarks/partial_rate_withdrawal_dose_response_v036.py
+      - .github/workflows/partial-rate-dose-response-v036.yml
+      - docs/v0.36-partial-rate-dose-response-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Partial RATE-Withdrawal Dose-Response v0.36
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/partial_rate_withdrawal_dose_response_v036.py | tee /tmp/v036.log
+          awk '/^\[dose_response\]$/{show=1} show{print}' /tmp/v036.log > /tmp/diagnostic.txt
+          {
+            echo "Hosted v0.36 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/diagnostic.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 28 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
