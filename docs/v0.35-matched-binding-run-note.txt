@@ -1,0 +1,7 @@
+v0.35 isolated hosted-run trigger.
+
+Preregistration: issue #27
+Benchmark commit: d706404df6eda00e4d5d51ab2e87b9b6058a3658
+Workflow commit: cb045ee2181f51f9db4f4b8e93b80780638a8758
+
+No scientific parameter, seed, threshold, actuator, candidate rule, repetition count, deadline rule, or interpretation criterion changed in this commit.
