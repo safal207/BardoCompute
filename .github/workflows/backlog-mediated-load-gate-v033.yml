@@ -1,0 +1,47 @@
+name: Backlog-Mediated Load-Gate v0.33
+
+on:
+  push:
+    branches:
+      - research/v0.33-backlog-mediated-load-gate
+    paths:
+      - benchmarks/backlog_mediated_load_gate_v033.py
+      - .github/workflows/backlog-mediated-load-gate-v033.yml
+      - docs/v0.33-backlog-mediated-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Backlog-Mediated Load-Gate v0.33
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/backlog_mediated_load_gate_v033.py | tee /tmp/v033.log
+          awk '/^\[backlog_mediated_attribution\]$/{show=1} show{print}' /tmp/v033.log > /tmp/attribution.txt
+          {
+            echo "Hosted v0.33 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/attribution.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 25 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
