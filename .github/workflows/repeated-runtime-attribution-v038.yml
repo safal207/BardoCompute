@@ -1,0 +1,48 @@
+name: Repeated Matched Runtime Attribution v0.38
+
+on:
+  push:
+    branches:
+      - research/v0.38-repeated-runtime-attribution
+    paths:
+      - benchmarks/repeated_runtime_attribution_v038.py
+      - .github/workflows/repeated-runtime-attribution-v038.yml
+      - docs/v0.38-repeated-runtime-run-note.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e . pytest
+      - run: pytest -q tests/test_exchange.py
+      - name: Run Repeated Matched Runtime Attribution v0.38
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python benchmarks/repeated_runtime_attribution_v038.py | tee /tmp/v038.log
+          awk '/^\[repeated_matched\]$/{show=1} show{print}' /tmp/v038.log > /tmp/diagnostic.txt
+          {
+            echo "Hosted v0.38 — Python ${{ matrix.python-version }}"
+            echo
+            echo '```text'
+            cat /tmp/diagnostic.txt
+            echo '```'
+            echo
+            echo "commit: $GITHUB_SHA"
+          } > /tmp/comment.md
+          gh issue comment 30 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.md
