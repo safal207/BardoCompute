@@ -52,6 +52,19 @@ jobs:
           .venv311/bin/python -m pytest -q tests/test_exchange.py
           .venv312/bin/python -m pytest -q tests/test_exchange.py
 
+      - name: Create stable interpreter wrappers
+        shell: bash
+        run: |
+          cat > /tmp/py311-v042 <<EOF
+          #!/usr/bin/env bash
+          exec "$GITHUB_WORKSPACE/.venv311/bin/python" "\$@"
+          EOF
+          cat > /tmp/py312-v042 <<EOF
+          #!/usr/bin/env bash
+          exec "$GITHUB_WORKSPACE/.venv312/bin/python" "\$@"
+          EOF
+          chmod +x /tmp/py311-v042 /tmp/py312-v042
+
       - name: Run same-host dual-interpreter audit v0.42
         shell: bash
         env:
@@ -59,8 +72,8 @@ jobs:
         run: |
           .venv312/bin/python benchmarks/same_host_dual_interpreter_v042.py \
             --coordinator \
-            --py311 .venv311/bin/python \
-            --py312 .venv312/bin/python \
+            --py311 /tmp/py311-v042 \
+            --py312 /tmp/py312-v042 \
             --json-output /tmp/v042-results.json \
             | tee /tmp/v042.log
 
