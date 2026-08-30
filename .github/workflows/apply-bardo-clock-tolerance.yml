@@ -1,0 +1,124 @@
+name: Apply BARDO nextpnr clock tolerance
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - ".github/workflows/apply-bardo-clock-tolerance.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BARDO hardware branch
+        uses: actions/checkout@v4
+        with:
+          ref: hardware/v0.1-bardo-tx1
+          fetch-depth: 0
+
+      - name: Apply bounded clock-constraint tolerance and regressions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/bardocompute/hardware_claims.py")
+          text = source.read_text(encoding="utf-8")
+          old = '''        if math.isclose(constraint, requested_clock_mhz, rel_tol=1e-6, abs_tol=1e-6):
+              matching_constraint = True
+          '''
+          new = '''        # nextpnr serializes the requested clock after period/frequency
+              # quantization, so the JSON constraint can differ by a few tens of ppm.
+              # Keep the tolerance narrow enough that a distinct clock profile fails.
+              if math.isclose(
+                  constraint,
+                  requested_clock_mhz,
+                  rel_tol=1e-4,
+                  abs_tol=1e-6,
+              ):
+                  matching_constraint = True
+          '''
+          matches = text.count(old)
+          if matches != 1:
+              raise SystemExit(
+                  f"expected exactly one clock-constraint comparison, found {matches}"
+              )
+          source.write_text(text.replace(old, new), encoding="utf-8")
+
+          tests = Path("tests/test_hardware_claims.py")
+          test_text = tests.read_text(encoding="utf-8")
+          sentinel = "def test_quantized_nextpnr_constraint_matches_declared_profile"
+          if sentinel in test_text:
+              raise SystemExit("clock quantization regressions already exist")
+          test_text += '''
+
+
+def test_quantized_nextpnr_constraint_matches_declared_profile() -> None:
+    fpga = fpga_evidence()
+    fpga["clock_mhz"] = "75"
+    fpga["core_mtrigrams_s"] = "5325"
+    report = nextpnr_report()
+    report["fmax"] = {
+        "$glbnet$clk_75mhz": {
+            "achieved": 85.5139389038086,
+            "constraint": 75.00187683105469,
+        }
+    }
+
+    result = build_claim_report(
+        fpga_evidence=fpga,
+        cpu_evidence=cpu_evidence(),
+        nextpnr_report=report,
+        bitstream_sha256=BITSTREAM_SHA256,
+    )
+
+    assert result["implementation"]["clocks"][0]["constraint_mhz"] == pytest.approx(
+        75.00187683105469
+    )
+
+
+def test_distinct_nextpnr_constraint_does_not_match_declared_profile() -> None:
+    fpga = fpga_evidence()
+    fpga["clock_mhz"] = "75"
+    fpga["core_mtrigrams_s"] = "5325"
+    report = nextpnr_report()
+    report["fmax"] = {
+        "$glbnet$clk_wrong_profile": {
+            "achieved": 85.5,
+            "constraint": 74.99,
+        }
+    }
+
+    with pytest.raises(EvidenceError, match="no clock constraint matches"):
+        build_claim_report(
+            fpga_evidence=fpga,
+            cpu_evidence=cpu_evidence(),
+            nextpnr_report=report,
+            bitstream_sha256=BITSTREAM_SHA256,
+        )
+'''
+          tests.write_text(test_text, encoding="utf-8")
+
+          Path(".github/workflows/apply-bardo-clock-tolerance.yml").unlink()
+          PY
+
+      - name: Run focused claim-gate tests
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+          python -m pytest -q tests/test_hardware_claims.py
+
+      - name: Commit validated fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(claims): tolerate nextpnr clock quantization"
+          git push origin HEAD:hardware/v0.1-bardo-tx1
