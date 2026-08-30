@@ -88,8 +88,11 @@ $(PLL_75): | $(BUILD_75)
 	grep -Fq '.CLKFB_DIV(3)' $(PLL_75)
 	grep -Fq '.CLKOP_DIV(8)' $(PLL_75)
 
+# Let synth_ecp5 load the ECP5 primitive library before hierarchy validation.
+# A standalone hierarchy -check here rejects the generated EHXPLLL primitive
+# before the architecture pass has had a chance to register it.
 $(JSON_75): $(RTL_75) | $(BUILD_75)
-	yosys -l $(BUILD_75)/yosys-ecp5.log -p 'read_verilog -sv $(RTL_75); hierarchy -check -top $(TOP_75); synth_ecp5 -abc9 -json $(JSON_75); stat'
+	yosys -l $(BUILD_75)/yosys-ecp5.log -p 'read_verilog -sv $(RTL_75); synth_ecp5 -top $(TOP_75) -abc9 -json $(JSON_75); stat'
 
 $(CONFIG_75): $(JSON_75) $(LPF)
 	nextpnr-ecp5 --85k --package CABGA381 --json $(JSON_75) --lpf $(LPF) --textcfg $(CONFIG_75) --freq 75 --report $(REPORT_75) 2>&1 | tee $(BUILD_75)/nextpnr.log

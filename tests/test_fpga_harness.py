@@ -102,11 +102,13 @@ def test_75mhz_build_and_lock_boundaries_are_declared() -> None:
         ".CLKI_DIV(1)",
         ".CLKFB_DIV(3)",
         ".CLKOP_DIV(8)",
+        "synth_ecp5 -top $(TOP_75)",
         "--freq 75",
         "core_mtrigrams_s=5325",
     ):
         assert required in makefile
 
+    assert "hierarchy -check -top $(TOP_75)" not in makefile
     assert "if (!pll_locked)" in harness
     assert "reset_shift <= 8'h00" in harness
     assert ".clk(clk_75mhz)" in harness
