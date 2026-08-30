@@ -51,8 +51,6 @@ evidence: $(BIT) resource-check tool-versions
 	  'lanes=71' \
 	  'core_mtrigrams_s=1775' \
 	  'cpu_competition_status=unresolved' \
-	  'legacy_cpu_checksum_control_mtrigrams_s=867.029' \
-	  'legacy_control_warning=serial checksum dependency is inside the timed CPU loop' \
 	  'claim_boundary=on-chip generator and reducer; not host end-to-end' \
 	  > $(BUILD)/evidence.txt
 	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD)/nextpnr.log > $(BUILD)/timing-summary.txt || true
