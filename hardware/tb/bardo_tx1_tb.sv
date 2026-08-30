@@ -7,7 +7,10 @@ module bardo_tx1_tb;
     reg rst_n = 1'b0;
     reg in_valid = 1'b0;
     wire in_ready;
-    reg [8:0] in_lines = 9'b0;
+    // Start away from the first exhaustive vector (000/000/000). This makes
+    // the initial combinational evaluation explicit across simulators instead
+    // of depending on declaration-time event ordering.
+    reg [8:0] in_lines = 9'b111_111_111;
     wire out_valid;
     reg out_ready = 1'b1;
     wire [0:0] out_valid_mask;
@@ -95,6 +98,34 @@ module bardo_tx1_tb;
         end
     endtask
 
+    task automatic print_context;
+        input [2:0] a;
+        input [2:0] b;
+        input [2:0] c;
+        begin
+            $display(
+                "CONTEXT lower=%03b middle=%03b upper=%03b valid(got/expected)=%b/%b index(got/expected)=%0d/%0d policy(got/expected)=%b/%b settled(got/expected)=%09b/%09b discontinuity(got/expected)=%b/%b transition(got/expected)=%b/%b targets(got/expected)=%0d/%0d",
+                a,
+                b,
+                c,
+                out_valid_mask[0],
+                expected_valid,
+                out_trigram_index,
+                expected_index,
+                out_policy_allow[0],
+                expected_policy,
+                out_settled_lines,
+                expected_settled,
+                out_any_discontinuous[0],
+                expected_discontinuous,
+                out_any_transition[0],
+                expected_transition,
+                out_target_count,
+                expected_targets
+            );
+        end
+    endtask
+
     task automatic drive_and_check;
         input [2:0] a;
         input [2:0] b;
@@ -127,41 +158,71 @@ module bardo_tx1_tb;
 
             @(posedge clk);
             #1;
-            if (!out_valid)
+            if (!out_valid) begin
+                print_context(a, b, c);
                 fail("output valid did not follow accepted input");
-            if (out_valid_mask[0] !== expected_valid)
+            end
+            if (out_valid_mask[0] !== expected_valid) begin
+                print_context(a, b, c);
                 fail("valid-mask mismatch");
+            end
 
             if (!expected_valid) begin
-                if (out_trigram_index !== 8'b0)
+                if (out_trigram_index !== 8'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle leaked a trigram index");
-                if (out_policy_allow[0] !== 1'b0)
+                end
+                if (out_policy_allow[0] !== 1'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle did not fail policy closed");
-                if (out_settled_lines !== 9'b0)
+                end
+                if (out_settled_lines !== 9'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle leaked settled state");
-                if (out_any_discontinuous[0] !== 1'b0)
+                end
+                if (out_any_discontinuous[0] !== 1'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle leaked discontinuity feature");
-                if (out_any_transition[0] !== 1'b0)
+                end
+                if (out_any_transition[0] !== 1'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle leaked transition feature");
-                if (out_target_count !== 2'b0)
+                end
+                if (out_target_count !== 2'b0) begin
+                    print_context(a, b, c);
                     fail("invalid bundle leaked target count");
+                end
             end else begin
                 valid_count = valid_count + 1;
-                if (out_trigram_index !== expected_index[7:0])
+                if (out_trigram_index !== expected_index[7:0]) begin
+                    print_context(a, b, c);
                     fail("radix-6 trigram index mismatch");
-                if (seen_indices[expected_index])
+                end
+                if (seen_indices[expected_index]) begin
+                    print_context(a, b, c);
                     fail("two valid sparse trigrams aliased to one dense index");
+                end
                 seen_indices[expected_index] = 1'b1;
-                if (out_policy_allow[0] !== expected_policy)
+                if (out_policy_allow[0] !== expected_policy) begin
+                    print_context(a, b, c);
                     fail("reference policy mismatch");
-                if (out_settled_lines !== expected_settled)
+                end
+                if (out_settled_lines !== expected_settled) begin
+                    print_context(a, b, c);
                     fail("settled bundle mismatch");
-                if (out_any_discontinuous[0] !== expected_discontinuous)
+                end
+                if (out_any_discontinuous[0] !== expected_discontinuous) begin
+                    print_context(a, b, c);
                     fail("discontinuity feature mismatch");
-                if (out_any_transition[0] !== expected_transition)
+                end
+                if (out_any_transition[0] !== expected_transition) begin
+                    print_context(a, b, c);
                     fail("transition feature mismatch");
-                if (out_target_count !== expected_targets[1:0])
+                end
+                if (out_target_count !== expected_targets[1:0]) begin
+                    print_context(a, b, c);
                     fail("target-count mismatch");
+                end
             end
         end
     endtask
