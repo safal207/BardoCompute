@@ -53,7 +53,7 @@ tool-versions: | $(BUILD)
 	  yosys -V; \
 	  nextpnr-ecp5 --version; \
 	  ecppack --version || true; \
-	  ecpll --help | head -n 2 || true; \
+	  ecppll --help | head -n 2 || true; \
 	} > $(BUILD)/tool-versions.txt 2>&1
 
 evidence: $(BIT) resource-check tool-versions
@@ -76,10 +76,10 @@ evidence: $(BIT) resource-check tool-versions
 $(BUILD_75):
 	mkdir -p $(BUILD_75)
 
-# Generate rather than hand-maintain the ECP5 PLL primitive. The pinned ecpll
+# Generate rather than hand-maintain the ECP5 PLL primitive. The pinned ecppll
 # tool must derive 25 -> 75 MHz inside the legal ECP5 PFD/VCO range.
 $(PLL_75): | $(BUILD_75)
-	ecpll -i 25 -o 75 -n bardo_tx1_pll75 \
+	ecppll -i 25 -o 75 -n bardo_tx1_pll75 \
 	  --clkin_name clkin --clkout0_name clkout0 -f $(PLL_75)
 	test -s $(PLL_75)
 	grep -Fq 'module bardo_tx1_pll75' $(PLL_75)
@@ -109,7 +109,7 @@ tool-versions-75: $(PLL_75)
 	  yosys -V; \
 	  nextpnr-ecp5 --version; \
 	  ecppack --version || true; \
-	  printf '%s\n' 'pll_generator=ecpll'; \
+	  printf '%s\n' 'pll_generator=ecppll'; \
 	  sha256sum $(PLL_75); \
 	} > $(BUILD_75)/tool-versions.txt 2>&1
 

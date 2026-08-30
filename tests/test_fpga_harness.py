@@ -98,7 +98,7 @@ def test_75mhz_build_and_lock_boundaries_are_declared() -> None:
     ).read_text(encoding="utf-8")
 
     for required in (
-        "ecpll -i 25 -o 75",
+        "ecppll -i 25 -o 75",
         ".CLKI_DIV(1)",
         ".CLKFB_DIV(3)",
         ".CLKOP_DIV(8)",

@@ -15,9 +15,9 @@ different claims instead of silently replacing one with the other:
 
 Both numbers are `lanes × clock`. Neither is an end-to-end CPU speedup.
 
-The 75 MHz profile generates its ECP5 PLL with the pinned `ecpll` tool. The
-build fails unless the generated primitive retains the frozen 25 → 75 MHz
-contract:
+The 75 MHz profile generates its ECP5 PLL with the pinned Project Trellis
+`ecppll` utility. The build fails unless the generated primitive retains the
+frozen 25 → 75 MHz contract:
 
 ```text
 CLKI_DIV  = 1
