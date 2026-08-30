@@ -1,0 +1,23 @@
+name: Mark BARDO-TX1 PR ready
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  mark-ready:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark pull request ready for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_ID: PR_kwDOT_icW88AAAABBgHK9Q
+        run: |
+          gh api graphql \
+            -f query='mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{number isDraft}}}' \
+            -f id="$PR_ID"
