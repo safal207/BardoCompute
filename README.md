@@ -38,6 +38,20 @@ The first experiments test whether retaining transition state provides measurabl
 - **Cost** — memory and operation overhead
 - **Speed** — execution time / throughput
 
+## Hardware track
+
+`BARDO-TX1` is the first synthesizable execution boundary. It is a
+parameterized streaming coprocessor for three-line transition groups, not a
+claim that BardoCompute already replaces a general-purpose CPU.
+
+The hardware slice validates the six legal packed line states, fails closed on
+reserved codes, emits the dense radix-6 trigram index, settles target states,
+exposes transition features, and evaluates the existing joint reference
+policy. See [`docs/hardware-v0.1.md`](docs/hardware-v0.1.md).
+
+Any CPU-competition claim must beat the fastest equal-information CPU baseline
+end to end, including memory and host/device interface costs.
+
 ## Roadmap
 
 ```text
@@ -57,4 +71,7 @@ BardoCompute uses traditional symbolic systems as inspiration for formal transit
 
 ## Status
 
-Research prototype. v0.1 is focused on the smallest executable algebra and a reproducible binary-vs-transition benchmark.
+Research prototype. The repository contains the original executable algebra,
+software/native falsification experiments, and a first synthesizable hardware
+slice. FPGA frequency, power, area, and CPU speedup remain unclaimed until
+measured.

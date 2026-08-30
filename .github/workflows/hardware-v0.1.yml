@@ -1,0 +1,61 @@
+name: BARDO-TX1 hardware v0.1
+
+on:
+  pull_request:
+    paths:
+      - "rtl/**"
+      - "hardware/**"
+      - "src/bardocompute/hardware_contract.py"
+      - "tests/test_hardware_contract.py"
+      - "docs/hardware-v0.1.md"
+      - ".github/workflows/hardware-v0.1.yml"
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - "rtl/**"
+      - "hardware/**"
+      - "src/bardocompute/hardware_contract.py"
+      - "tests/test_hardware_contract.py"
+      - "docs/hardware-v0.1.md"
+      - ".github/workflows/hardware-v0.1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reference-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package and test runner
+        run: python -m pip install -e . pytest
+      - name: Exhaustive software contract
+        run: python -m pytest -q tests/test_hardware_contract.py
+
+  rtl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install open-source RTL tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog yosys
+      - name: Exhaustive RTL simulation
+        run: make -C hardware sim
+      - name: Generic synthesis and structural checks
+        run: make -C hardware synth
+      - name: Equal-input CPU baseline smoke
+        run: make -C hardware cpu-smoke
+      - name: Upload RTL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-tx1-hardware-evidence-${{ github.run_id }}
+          path: hardware/build/
+          if-no-files-found: warn
+          retention-days: 14
