@@ -67,6 +67,39 @@ module bardo_tx1 #(
         end
     endfunction
 
+    // Explicit constant-weight decoders keep tiny radix arithmetic in LUTs.
+    // Writing these as multiplications made ECP5 mapping spend two DSP blocks
+    // per lane on *6 and *36, even though both operands have only six values.
+    function automatic [7:0] radix6_middle_weight;
+        input [2:0] digit;
+        begin
+            case (digit)
+                3'd0: radix6_middle_weight = 8'd0;
+                3'd1: radix6_middle_weight = 8'd6;
+                3'd2: radix6_middle_weight = 8'd12;
+                3'd3: radix6_middle_weight = 8'd18;
+                3'd4: radix6_middle_weight = 8'd24;
+                3'd5: radix6_middle_weight = 8'd30;
+                default: radix6_middle_weight = 8'd0;
+            endcase
+        end
+    endfunction
+
+    function automatic [7:0] radix6_upper_weight;
+        input [2:0] digit;
+        begin
+            case (digit)
+                3'd0: radix6_upper_weight = 8'd0;
+                3'd1: radix6_upper_weight = 8'd36;
+                3'd2: radix6_upper_weight = 8'd72;
+                3'd3: radix6_upper_weight = 8'd108;
+                3'd4: radix6_upper_weight = 8'd144;
+                3'd5: radix6_upper_weight = 8'd180;
+                default: radix6_upper_weight = 8'd0;
+            endcase
+        end
+    endfunction
+
     function automatic [2:0] settle_line;
         input [2:0] code;
         begin
@@ -85,16 +118,16 @@ module bardo_tx1 #(
 
     function automatic [7:0] trigram_index_fn;
         input [8:0] bundle;
-        reg [7:0] lower_digit;
-        reg [7:0] middle_digit;
-        reg [7:0] upper_digit;
+        reg [2:0] lower_digit;
+        reg [2:0] middle_digit;
+        reg [2:0] upper_digit;
         begin
-            lower_digit = {5'b0, line_digit(bundle[2:0])};
-            middle_digit = {5'b0, line_digit(bundle[5:3])};
-            upper_digit = {5'b0, line_digit(bundle[8:6])};
-            trigram_index_fn = lower_digit
-                + (middle_digit * 8'd6)
-                + (upper_digit * 8'd36);
+            lower_digit = line_digit(bundle[2:0]);
+            middle_digit = line_digit(bundle[5:3]);
+            upper_digit = line_digit(bundle[8:6]);
+            trigram_index_fn = {5'b0, lower_digit}
+                + radix6_middle_weight(middle_digit)
+                + radix6_upper_weight(upper_digit);
         end
     endfunction
 

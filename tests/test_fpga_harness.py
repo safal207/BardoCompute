@@ -51,9 +51,11 @@ def test_ulx3s_epoch_signature_matches_rtl_constant() -> None:
     assert signature == EXPECTED_SIGNATURE
 
 
-def test_board_core_roofline_preserves_two_x_cpu_gate() -> None:
-    measured_cpu_lut_mtrigrams_s = 867.029
+def test_board_core_capacity_is_explicit_without_a_cpu_win_claim() -> None:
     fpga_core_mtrigrams_s = LANES * BOARD_CLOCK_MHZ
+    raw_input_gbytes_s = fpga_core_mtrigrams_s * 9 / 8 / 1_000
+    full_output_gbytes_s = fpga_core_mtrigrams_s * 23 / 8 / 1_000
 
     assert fpga_core_mtrigrams_s == 1_775
-    assert fpga_core_mtrigrams_s / measured_cpu_lut_mtrigrams_s > 2.0
+    assert raw_input_gbytes_s == 1.996875
+    assert full_output_gbytes_s == 5.103125

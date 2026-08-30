@@ -5,14 +5,15 @@ BUILD := build
 TOP := bardo_tx1_ulx3s_bench
 RTL := ../../rtl/bardo_tx1.sv $(TOP).sv
 LPF := ulx3s_bardo_tx1.lpf
+REPORT_CHECK := check_report.py
 JSON := $(BUILD)/$(TOP).json
 CONFIG := $(BUILD)/$(TOP).config
 BIT := $(BUILD)/$(TOP).bit
 REPORT := $(BUILD)/nextpnr-report.json
 
-.PHONY: all bitstream evidence tool-versions clean
+.PHONY: all bitstream resource-check evidence tool-versions clean
 
-all: bitstream evidence
+all: bitstream resource-check evidence
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -29,6 +30,10 @@ $(BIT): $(CONFIG)
 
 bitstream: $(BIT)
 
+resource-check: $(CONFIG) $(REPORT_CHECK)
+	python3 $(REPORT_CHECK) $(REPORT) 2>&1 | tee $(BUILD)/resource-check.txt
+	grep -Fqx 'resource_check=pass' $(BUILD)/resource-check.txt
+
 tool-versions: | $(BUILD)
 	{ \
 	  yosys -V; \
@@ -36,7 +41,7 @@ tool-versions: | $(BUILD)
 	  ecppack --version || true; \
 	} > $(BUILD)/tool-versions.txt 2>&1
 
-evidence: $(BIT) tool-versions
+evidence: $(BIT) resource-check tool-versions
 	sha256sum $(JSON) $(CONFIG) $(BIT) > $(BUILD)/SHA256SUMS
 	printf '%s\n' \
 	  'board=ULX3S-85F' \
@@ -45,8 +50,9 @@ evidence: $(BIT) tool-versions
 	  'clock_mhz=25' \
 	  'lanes=71' \
 	  'core_mtrigrams_s=1775' \
-	  'cpu_lut_control_mtrigrams_s=867.029' \
-	  'core_roofline_ratio=2.047221' \
+	  'cpu_competition_status=unresolved' \
+	  'legacy_cpu_checksum_control_mtrigrams_s=867.029' \
+	  'legacy_control_warning=serial checksum dependency is inside the timed CPU loop' \
 	  'claim_boundary=on-chip generator and reducer; not host end-to-end' \
 	  > $(BUILD)/evidence.txt
 	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD)/nextpnr.log > $(BUILD)/timing-summary.txt || true

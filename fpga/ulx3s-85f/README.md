@@ -5,17 +5,34 @@ for the ULX3S-85F board.
 
 ## Why 71 lanes at 25 MHz
 
-The strongest equal-input CPU control measured in the H0 CI run was the
-512-entry LUT path at `867.029 Mtrigrams/s`. The board oscillator is 25 MHz, so
-71 parallel lanes provide this core roofline:
+Seventy-one parallel lanes at the native board clock provide an explicit
+on-chip capacity boundary:
 
 ```text
 71 lanes * 25 MHz = 1.775 Gtrigrams/s
-1.775 / 0.867029 = 2.047x
 ```
 
-This avoids inventing a high PLL clock merely to win a benchmark. The design
-competes by spatial parallelism at the board's native clock.
+That number is a core roofline, not an end-to-end CPU victory. The earlier
+`867.029 Mtrigrams/s` CPU figure kept a serial dependent checksum inside every
+timed iteration, so it is retained only as a legacy diagnostic. A replacement
+CPU control must materialize equivalent outputs and verify them outside the
+timed kernel before any speedup claim is made.
+
+## DSP-free structural gate
+
+The trigram index uses tiny constant radix weights (`*6` and `*36`). The first
+ECP5 mapping inferred two `MULT18X18D` DSP blocks per lane and consumed 142 of
+156 DSPs for 71 lanes. The RTL now expresses those weights as explicit six-way
+constant decoders.
+
+`check_report.py` fails CI unless:
+
+- `MULT18X18D used == 0`;
+- every reported clock meets its nextpnr constraint;
+- utilization and timing fields are present rather than silently missing.
+
+This preserves DSPs for future arithmetic and turns the resource assumption
+into a checked hardware contract.
 
 ## Self-test
 
@@ -41,8 +58,8 @@ make -C fpga/ulx3s-85f all
 ```
 
 Outputs include the Yosys ECP5 JSON, nextpnr text configuration and timing
-report, packed `.bit` file, tool versions, checksums, and a claim-boundary
-manifest.
+report, structural gate result, packed `.bit` file, tool versions, checksums,
+and a claim-boundary manifest.
 
 ## Honest boundary
 
