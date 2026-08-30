@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from bardocompute.hardware_contract import evaluate_trigram, unpack_trigram_lines
 
 LANES = 71
 BOARD_CLOCK_MHZ = 25
+PLL_PROFILE_CLOCK_MHZ = 75
+PLL_INPUT_DIV = 1
+PLL_FEEDBACK_DIV = 3
+PLL_OUTPUT_DIV = 8
 SIGNATURE_SEED = 0x424152444F545831
 EXPECTED_SIGNATURE = 0xB0058CD5263C1FC3
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _payload_word(bundle: int) -> int:
@@ -51,7 +58,7 @@ def test_ulx3s_epoch_signature_matches_rtl_constant() -> None:
     assert signature == EXPECTED_SIGNATURE
 
 
-def test_board_core_capacity_is_explicit_without_a_cpu_win_claim() -> None:
+def test_native_board_core_capacity_is_explicit_without_a_cpu_win_claim() -> None:
     fpga_core_mtrigrams_s = LANES * BOARD_CLOCK_MHZ
     raw_input_gbytes_s = fpga_core_mtrigrams_s * 9 / 8 / 1_000
     full_output_gbytes_s = fpga_core_mtrigrams_s * 23 / 8 / 1_000
@@ -59,3 +66,46 @@ def test_board_core_capacity_is_explicit_without_a_cpu_win_claim() -> None:
     assert fpga_core_mtrigrams_s == 1_775
     assert raw_input_gbytes_s == 1.996875
     assert full_output_gbytes_s == 5.103125
+
+
+def test_75mhz_pll_profile_has_a_frozen_clock_contract() -> None:
+    pfd_mhz = BOARD_CLOCK_MHZ / PLL_INPUT_DIV
+    vco_mhz = pfd_mhz * PLL_FEEDBACK_DIV * PLL_OUTPUT_DIV
+    output_mhz = vco_mhz / PLL_OUTPUT_DIV
+
+    assert pfd_mhz == 25
+    assert vco_mhz == 600
+    assert output_mhz == PLL_PROFILE_CLOCK_MHZ == 75
+    assert PLL_PROFILE_CLOCK_MHZ == 3 * BOARD_CLOCK_MHZ
+
+
+def test_75mhz_profile_remains_a_core_only_bandwidth_boundary() -> None:
+    fpga_core_mtrigrams_s = LANES * PLL_PROFILE_CLOCK_MHZ
+    raw_input_gbytes_s = fpga_core_mtrigrams_s * 9 / 8 / 1_000
+    full_output_gbytes_s = fpga_core_mtrigrams_s * 23 / 8 / 1_000
+
+    assert fpga_core_mtrigrams_s == 5_325
+    assert raw_input_gbytes_s == 5.990625
+    assert full_output_gbytes_s == 15.309375
+    assert raw_input_gbytes_s + full_output_gbytes_s == 21.3
+
+
+def test_75mhz_build_and_lock_boundaries_are_declared() -> None:
+    makefile = (REPO_ROOT / "fpga/ulx3s-85f/Makefile").read_text(encoding="utf-8")
+    harness = (
+        REPO_ROOT / "fpga/ulx3s-85f/bardo_tx1_ulx3s_bench_75.sv"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "ecpll -i 25 -o 75",
+        ".CLKI_DIV(1)",
+        ".CLKFB_DIV(3)",
+        ".CLKOP_DIV(8)",
+        "--freq 75",
+        "core_mtrigrams_s=5325",
+    ):
+        assert required in makefile
+
+    assert "if (!pll_locked)" in harness
+    assert "reset_shift <= 8'h00" in harness
+    assert ".clk(clk_75mhz)" in harness

@@ -88,7 +88,7 @@ jobs:
         with:
           version: "2026-08-30"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and time ULX3S-85F bitstream
+      - name: Build and time native 25 MHz ULX3S-85F bitstream
         run: make -C fpga/ulx3s-85f all
       - name: Build same-semantics CPU control
         run: make -C hardware cpu-smoke
@@ -101,7 +101,7 @@ jobs:
             2>&1 | tee fpga/ulx3s-85f/build/cpu-control.log
           grep -Fqx 'cpu_control_gate=pass' fpga/ulx3s-85f/build/cpu-control.log
           grep -Fqx 'cpu_competition_status=unresolved' fpga/ulx3s-85f/build/cpu-control.log
-      - name: Gate CPU-competition claims
+      - name: Gate native-profile CPU-competition claims
         run: |
           PYTHONPATH=src python3 -m bardocompute.hardware_claims \
             --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
@@ -115,11 +115,63 @@ jobs:
           grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build/claim-gate.log
           grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build/claim-gate.log
           cp hardware/build/cpu-baseline.log fpga/ulx3s-85f/build/cpu-baseline.log
-      - name: Upload place-and-route evidence and flashable image
+      - name: Upload native-profile place-and-route evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bardo-tx1-ulx3s-85f-${{ github.run_id }}
+          name: bardo-tx1-ulx3s-85f-25mhz-${{ github.run_id }}
           path: fpga/ulx3s-85f/build/
+          if-no-files-found: warn
+          retention-days: 14
+
+  fpga-ulx3s-85f-75mhz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned open-source FPGA toolchain
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          version: "2026-08-30"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate PLL and build 75 MHz ULX3S-85F bitstream
+        run: make -C fpga/ulx3s-85f all-75
+      - name: Assert explicit PLL profile boundary
+        run: |
+          grep -Fqx 'profile=pll_25_to_75mhz' fpga/ulx3s-85f/build-75mhz/evidence.txt
+          grep -Fqx 'input_clock_mhz=25' fpga/ulx3s-85f/build-75mhz/evidence.txt
+          grep -Fqx 'clock_source=ecp5_pll' fpga/ulx3s-85f/build-75mhz/evidence.txt
+          grep -Fqx 'clock_mhz=75' fpga/ulx3s-85f/build-75mhz/evidence.txt
+          grep -Fqx 'core_mtrigrams_s=5325' fpga/ulx3s-85f/build-75mhz/evidence.txt
+      - name: Build same-semantics CPU control
+        run: make -C hardware cpu-smoke
+      - name: Reject weak CPU controls and record bounded PLL-profile ratios
+        run: |
+          PYTHONPATH=src python3 -m bardocompute.cpu_control \
+            --fpga-evidence fpga/ulx3s-85f/build-75mhz/evidence.txt \
+            --cpu-evidence hardware/build/cpu-baseline.log \
+            --output fpga/ulx3s-85f/build-75mhz/cpu-control.txt \
+            2>&1 | tee fpga/ulx3s-85f/build-75mhz/cpu-control.log
+          grep -Fqx 'cpu_control_gate=pass' fpga/ulx3s-85f/build-75mhz/cpu-control.log
+          grep -Fqx 'cpu_competition_status=unresolved' fpga/ulx3s-85f/build-75mhz/cpu-control.log
+      - name: Gate PLL-profile CPU-competition claims
+        run: |
+          PYTHONPATH=src python3 -m bardocompute.hardware_claims \
+            --fpga-evidence fpga/ulx3s-85f/build-75mhz/evidence.txt \
+            --cpu-evidence hardware/build/cpu-baseline.log \
+            --nextpnr-report fpga/ulx3s-85f/build-75mhz/nextpnr-report.json \
+            --sha256s fpga/ulx3s-85f/build-75mhz/SHA256SUMS \
+            --json-output fpga/ulx3s-85f/build-75mhz/claim-gate.json \
+            --markdown-output fpga/ulx3s-85f/build-75mhz/claim-gate.md \
+            2>&1 | tee fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'claim_gate=pass' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          cp hardware/build/cpu-baseline.log fpga/ulx3s-85f/build-75mhz/cpu-baseline.log
+      - name: Upload PLL-profile place-and-route evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-tx1-ulx3s-85f-75mhz-${{ github.run_id }}
+          path: fpga/ulx3s-85f/build-75mhz/
           if-no-files-found: warn
           retention-days: 14

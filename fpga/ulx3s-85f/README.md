@@ -1,82 +1,131 @@
 # BARDO-TX1 on ULX3S-85F
 
-This directory turns the BARDO-TX1 RTL into a place-and-routed ECP5 bitstream
-for the ULX3S-85F board.
+This directory turns the BARDO-TX1 RTL into independently gated ECP5
+bitstreams for the ULX3S-85F board.
 
-## Why 71 lanes at 25 MHz
+## Clock profiles
 
-Seventy-one parallel lanes at the native board clock provide an explicit
-on-chip capacity boundary:
+The physical board oscillator is always 25 MHz. Two build profiles preserve two
+different claims instead of silently replacing one with the other:
+
+| Profile | Core clock | Lanes | On-chip roofline | Evidence boundary |
+| --- | ---: | ---: | ---: | --- |
+| `native_25mhz` | 25 MHz | 71 | 1.775 Gtrigrams/s | Native-clock reference |
+| `pll_25_to_75mhz` | 75 MHz | 71 | 5.325 Gtrigrams/s | Generated PLL, timing-gated candidate |
+
+Both numbers are `lanes × clock`. Neither is an end-to-end CPU speedup.
+
+The 75 MHz profile generates its ECP5 PLL with the pinned `ecpll` tool. The
+build fails unless the generated primitive retains the frozen 25 → 75 MHz
+contract:
 
 ```text
-71 lanes * 25 MHz = 1.775 Gtrigrams/s
+CLKI_DIV  = 1
+CLKFB_DIV = 3
+CLKOP_DIV = 8
+PFD       = 25 MHz
+VCO       = 600 MHz
+output    = 75 MHz
 ```
 
-That number is a core roofline, not an end-to-end CPU victory. The earlier
-`867.029 Mtrigrams/s` CPU figure kept a serial dependent checksum inside every
-timed iteration, so it is retained only as a legacy diagnostic. A replacement
-CPU control must materialize equivalent outputs and verify them outside the
-timed kernel before any speedup claim is made.
+A PLL lock loss reasserts the complete self-test reset. It is not treated as a
+valid continuation of the stream.
+
+## Fair CPU boundary
+
+The CPU control materializes the complete semantic output and also evaluates a
+bounded reduction path. Correctness is checked outside the timed kernels, and
+the strongest admissible single-thread path is retained. A serial dependent
+checksum cannot be used as the CPU opponent.
+
+`bardocompute.cpu_control` reports only core-level diagnostic ratios. The
+separate `bardocompute.hardware_claims` gate keeps both FPGA profiles at:
+
+```text
+status=CORE_ROOFLINE_ONLY
+claim_allowed=false
+```
+
+until an exact SHA-bound bitstream is measured physically with host transfer,
+setup, power, latency, and a real same-host workload in scope.
 
 ## DSP-free structural gate
 
-The trigram index uses tiny constant radix weights (`*6` and `*36`). The first
-ECP5 mapping inferred two `MULT18X18D` DSP blocks per lane and consumed 142 of
-156 DSPs for 71 lanes. The RTL now expresses those weights as explicit six-way
-constant decoders.
-
-`check_report.py` fails CI unless:
+The trigram index uses tiny constant radix weights (`*6` and `*36`). An early
+mapping inferred two `MULT18X18D` blocks per lane. The RTL now uses explicit
+constant decoders, and `check_report.py` fails CI unless:
 
 - `MULT18X18D used == 0`;
 - every reported clock meets its nextpnr constraint;
-- utilization and timing fields are present rather than silently missing.
+- utilization and timing fields are present.
 
-This preserves DSPs for future arithmetic and turns the resource assumption
-into a checked hardware contract.
+This preserves all DSP blocks for future arithmetic and makes timing/resource
+assumptions executable contracts.
 
-## Self-test
+## Continuous self-test
 
-The board harness continuously generates all 512 possible sparse 9-bit input
-bundles. Each of the 71 lanes receives a distinct offset; over every 512-cycle
-epoch, each lane sees the full address space.
+Each profile continuously generates all 512 sparse 9-bit input bundles. Every
+one of the 71 lanes receives a distinct offset, so each lane sees the complete
+address space during every 512-cycle epoch.
 
-Every output field is folded into an order-sensitive 64-bit signature. A green
-`led[0]` means at least one complete epoch matched
-`0xb0058cd5263c1fc3`; `led[1]` is a sticky failure indicator. The stream keeps
-running after the first pass so board power and thermal behavior can be
-measured under continuous load.
+Every output field is folded into the same order-sensitive 64-bit signature:
 
-The matching Python derivation lives in `tests/test_fpga_harness.py`; this keeps
-the RTL constant from becoming an unexplained magic value.
+```text
+0xb0058cd5263c1fc3
+```
+
+For the native profile, `led[0]` means at least one complete epoch matched and
+`led[1]` is sticky failure. The 75 MHz profile additionally exposes PLL lock on
+`led[2]`. Both streams continue after the first pass so physical power and
+thermal behavior can later be measured under continuous load.
+
+The matching Python derivation and clock contracts live in
+`tests/test_fpga_harness.py`.
 
 ## Build
 
-The pinned CI flow uses OSS CAD Suite `2026-08-30`:
+The pinned CI flow uses OSS CAD Suite `2026-08-30`.
+
+Native reference profile:
 
 ```bash
 make -C fpga/ulx3s-85f all
 ```
 
-Outputs include the Yosys ECP5 JSON, nextpnr text configuration and timing
-report, structural gate result, packed `.bit` file, tool versions, checksums,
-and a claim-boundary manifest.
+75 MHz PLL candidate:
 
-## Honest boundary
+```bash
+make -C fpga/ulx3s-85f all-75
+```
 
-This is an FPGA **core-throughput** benchmark with on-chip generation and
-reduction. It proves that a real ECP5 image can sustain the selected spatial
-architecture if place-and-route passes timing. It does not yet prove a host
-application can feed and drain the full result stream.
+Both profiles:
 
-At 1.775 Gtrigrams/s, the raw 9-bit input alone is about `2.00 GB/s`; exporting
-all 23 result bits would add about `5.10 GB/s`. A discrete slow peripheral link
-would erase the advantage. The production architecture therefore needs one of
-these boundaries:
+```bash
+make -C fpga/ulx3s-85f profiles
+```
+
+Outputs are isolated in `build/` and `build-75mhz/`. Each directory contains
+its own Yosys JSON, nextpnr configuration/report, structural-gate result,
+flashable `.bit`, tool record, SHA-256 manifest, CPU-control report, and
+claim-gate evidence.
+
+## Interface reality
+
+At the complete 23-bit output boundary, the theoretical stream requirements
+are:
+
+| Profile | Input | Output | Round trip |
+| --- | ---: | ---: | ---: |
+| 25 MHz | 1.997 GB/s | 5.103 GB/s | 7.100 GB/s |
+| 75 MHz | 5.991 GB/s | 15.309 GB/s | 21.300 GB/s |
+
+A slow discrete peripheral link would erase the compute advantage. A production
+BARDO boundary therefore needs one or more of:
 
 - near-memory or CPU-coherent integration;
 - on-device policy filtering and aggregation;
-- a compact result contract that returns only consequential decisions.
+- a compact result contract that exports only consequential decisions.
 
-The `.bit` artifact is ready to flash after CI succeeds, but physical-board
-execution, measured watts, temperature, and host end-to-end speed remain
-separate evidence gates.
+The bitstreams are implementation artifacts. Physical execution, watts,
+temperature, sustained host-fed throughput, and end-to-end CPU competition
+remain separate evidence gates.
