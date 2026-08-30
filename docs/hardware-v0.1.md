@@ -83,18 +83,75 @@ Required controls:
 1. identical input states and identical policy semantics;
 2. optimized scalar and SIMD CPU paths, including the best compiler settings;
 3. warm-cache and streaming/out-of-cache regimes;
-4. host-to-device transfer and DMA cost for a discrete FPGA;
+4. host-to-device transfer and setup cost for a discrete FPGA;
 5. throughput, p50/p99 latency, energy per accepted trigram, logic area, and
    bytes transferred;
-6. correctness checksums and fail-closed invalid-state tests.
+6. correctness checksums and fail-closed invalid-state tests;
+7. a physical measurement bound to the exact CI bitstream SHA-256.
 
 Initial success threshold:
 
 - at least `2x` end-to-end throughput per watt **or**
 - at least `2x` p99 latency improvement at equal throughput,
 
-on at least one real transition-heavy workload. A higher core clock or a small
-synthetic LUT win is not sufficient.
+on at least one real transition-heavy workload. A higher core clock, an on-chip
+self-test, or a synthetic LUT win is not sufficient.
+
+## Current implementation evidence
+
+The ULX3S-85F implementation uses 71 lanes at the native 25 MHz board clock.
+The current reproducible CI artifact reports:
+
+```text
+core roofline:              1,775.000 Mtrigrams/s
+post-route achieved clock:     84.717 MHz (25 MHz constraint)
+TRELLIS_COMB:                4,143
+TRELLIS_FF:                  1,327
+DP16KD:                          0
+MULT18X18D:                      0
+```
+
+The achieved clock is a nextpnr timing estimate, not a measured board clock.
+The 1.775 Gtrigrams/s figure is `lanes × clock` with inputs generated and results
+reduced on chip. At the full 23-bit result boundary it implies approximately:
+
+```text
+input:       1.997 GB/s
+output:      5.103 GB/s
+round trip:  7.100 GB/s
+```
+
+That bandwidth requirement is why the hardware must filter, aggregate, or sit
+near the workload rather than behave as a slow USB calculator.
+
+## Machine-enforced claim gate
+
+`bardocompute.hardware_claims` consumes the FPGA manifest, nextpnr report,
+bitstream checksum, CPU control, and an optional physical measurement. It emits
+both JSON and Markdown evidence and fails closed on mismatched clocks,
+resources, semantics, or bitstream identity.
+
+```bash
+PYTHONPATH=src python -m bardocompute.hardware_claims \
+  --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
+  --cpu-evidence hardware/build/cpu-baseline.log \
+  --nextpnr-report fpga/ulx3s-85f/build/nextpnr-report.json \
+  --sha256s fpga/ulx3s-85f/build/SHA256SUMS \
+  --json-output fpga/ulx3s-85f/build/claim-gate.json \
+  --markdown-output fpga/ulx3s-85f/build/claim-gate.md
+```
+
+The statuses are deliberately narrow:
+
+| Status | Meaning | CPU claim allowed? |
+| --- | --- | ---: |
+| `CORE_ROOFLINE_ONLY` | RTL/P&R plus CPU control; no physical host stream | No |
+| `PHYSICAL_SELF_TEST_ONLY` | Exact bitstream passed on-board self-test | No |
+| `END_TO_END_NOT_PROVEN` | Host stream measured, but one or more gates are missing or below threshold | No |
+| `CPU_COMPETITIVE_PASS` | Exact bitstream, real same-workload comparison, and a 2x energy or p99 gate | Yes |
+
+`--require-competitive` turns the last row into a mandatory release gate. It is
+not enabled in ordinary CI while the physical host-fed measurement is absent.
 
 ## Verification boundary
 
@@ -104,24 +161,32 @@ The v0.1 packet contains:
 - exhaustive Python checks over all 512 sparse bundles;
 - an RTL testbench over the same complete space;
 - a ready/valid backpressure test;
-- Yosys synthesis/check scripts;
-- an optimized C baseline with both direct evaluation and a fair 512-entry result LUT.
+- generic Yosys synthesis and ECP5 place-and-route;
+- a DSP-free structural gate;
+- a flashable bitstream with SHA-256 manifest;
+- an optimized C control with direct and 512-entry LUT paths;
+- a claim gate that cannot promote core roofline into end-to-end speedup.
 
-The RTL has not earned an FPGA frequency, resource, power, or CPU-speedup claim
-until CI synthesis and then a board implementation produce those measurements.
+What remains unproven is physical board execution, host-fed sustained
+throughput, power, temperature, p99 latency, and a real-workload CPU win.
 
 ## Hardware path
 
-### H0 — synthesizable core
+### H0 — synthesizable core: complete
 
-Current slice: portable SystemVerilog, exhaustive simulation, generic Yosys
-synthesis.
+Portable SystemVerilog, exhaustive simulation, generic synthesis, and a frozen
+software/RTL encoding contract are present.
 
-### H1 — FPGA proof
+### H1a — FPGA implementation artifact: complete
 
-Wrap BARDO-TX1 in an AXI-Stream or equivalent shell, add counters and a DMA
-loopback, then run on one FPGA platform. Measure post-place-and-route frequency,
-LUT/FF/BRAM use, sustained streaming throughput, and board power.
+The ULX3S-85F target completes Yosys ECP5 synthesis, nextpnr place-and-route,
+resource/timing checks, and bitstream packaging in CI.
+
+### H1b — physical FPGA evidence: open
+
+Flash the exact SHA-bound bitstream, record completed self-test epochs, then add
+a host-fed streaming shell and counters. Measure sustained throughput, bytes,
+power, temperature, and latency with transfer and setup included.
 
 ### H2 — CPU-attached execution
 
@@ -136,14 +201,17 @@ committing to an ISA too early.
 
 ### H3 — ASIC exploration
 
-After FPGA evidence, run RTL-to-GDS design-space exploration and compare
-power/performance/area across lane counts. No tapeout decision is justified
-before the end-to-end CPU comparison passes.
+After physical FPGA evidence, run RTL-to-GDS design-space exploration and
+compare power/performance/area across lane counts. No tapeout decision is
+justified before the end-to-end CPU comparison passes.
 
 ## Next implementation boundary
 
-1. make the current RTL CI green;
-2. record generic synthesis cell counts for `LANES=1, 4, 8, 16`;
-3. run the included C baseline across scalar/SIMD compiler variants and preserve the fastest path;
-4. add a cycle-accurate host/stream model;
-5. choose a board only after the interface bandwidth requirement is known.
+1. flash the current bitstream and record a SHA-bound `on_chip_self_test`
+   measurement;
+2. implement a host-fed streaming boundary that includes counters and exact byte
+   accounting;
+3. choose one real transition-heavy workload and run the same workload on the
+   same host CPU;
+4. measure board and CPU power plus p99 latency;
+5. run the gate with `--require-competitive`; only then promote a CPU claim.

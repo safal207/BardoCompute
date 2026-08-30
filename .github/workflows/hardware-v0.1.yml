@@ -7,7 +7,9 @@ on:
       - "hardware/**"
       - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/hardware_claims.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_hardware_claims.py"
       - "tests/test_fpga_harness.py"
       - "docs/hardware-v0.1.md"
       - ".github/workflows/hardware-v0.1.yml"
@@ -19,7 +21,9 @@ on:
       - "hardware/**"
       - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/hardware_claims.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_hardware_claims.py"
       - "tests/test_fpga_harness.py"
       - "docs/hardware-v0.1.md"
       - ".github/workflows/hardware-v0.1.yml"
@@ -38,8 +42,12 @@ jobs:
           python-version: "3.11"
       - name: Install package and test runner
         run: python -m pip install -e . pytest
-      - name: Exhaustive software and FPGA-signature contracts
-        run: python -m pytest -q tests/test_hardware_contract.py tests/test_fpga_harness.py
+      - name: Exhaustive software, FPGA-signature, and claim-gate contracts
+        run: >-
+          python -m pytest -q
+          tests/test_hardware_contract.py
+          tests/test_fpga_harness.py
+          tests/test_hardware_claims.py
 
   rtl:
     runs-on: ubuntu-latest
@@ -75,6 +83,22 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and time ULX3S-85F bitstream
         run: make -C fpga/ulx3s-85f all
+      - name: Build same-semantics CPU control
+        run: make -C hardware cpu-smoke
+      - name: Gate CPU-competition claims
+        run: |
+          PYTHONPATH=src python3 -m bardocompute.hardware_claims \
+            --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
+            --cpu-evidence hardware/build/cpu-baseline.log \
+            --nextpnr-report fpga/ulx3s-85f/build/nextpnr-report.json \
+            --sha256s fpga/ulx3s-85f/build/SHA256SUMS \
+            --json-output fpga/ulx3s-85f/build/claim-gate.json \
+            --markdown-output fpga/ulx3s-85f/build/claim-gate.md \
+            2>&1 | tee fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'claim_gate=pass' fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build/claim-gate.log
+          cp hardware/build/cpu-baseline.log fpga/ulx3s-85f/build/cpu-baseline.log
       - name: Upload place-and-route evidence and flashable image
         if: always()
         uses: actions/upload-artifact@v4
