@@ -18,8 +18,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
-      - run: pip install -e .
-      - run: pytest -q tests/test_exchange.py
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_exchange.py
       - name: Run falsification benchmark
         shell: bash
         run: |
