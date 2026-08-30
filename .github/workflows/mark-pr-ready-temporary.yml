@@ -16,8 +16,7 @@ jobs:
       - name: Mark pull request ready for review
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_ID: PR_kwDOT_icW88AAAABBgHK9Q
         run: |
-          gh api graphql \
-            -f query='mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{number isDraft}}}' \
-            -f id="$PR_ID"
+          set -euo pipefail
+          gh pr ready 40 --repo "$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/40" --jq '.draft')" = "false"
