@@ -25,24 +25,28 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          from base64 import b64decode
           from pathlib import Path
 
           source = Path("src/bardocompute/hardware_claims.py")
           text = source.read_text(encoding="utf-8")
-          old = '''        if math.isclose(constraint, requested_clock_mhz, rel_tol=1e-6, abs_tol=1e-6):
-              matching_constraint = True
-          '''
-          new = '''        # nextpnr serializes the requested clock after period/frequency
-              # quantization, so the JSON constraint can differ by a few tens of ppm.
-              # Keep the tolerance narrow enough that a distinct clock profile fails.
-              if math.isclose(
-                  constraint,
-                  requested_clock_mhz,
-                  rel_tol=1e-4,
-                  abs_tol=1e-6,
-              ):
-                  matching_constraint = True
-          '''
+          old = (
+              "        if math.isclose(constraint, requested_clock_mhz, "
+              "rel_tol=1e-6, abs_tol=1e-6):\n"
+              "            matching_constraint = True\n"
+          )
+          new = (
+              "        # nextpnr serializes the requested clock after period/frequency\n"
+              "        # quantization, so the JSON constraint can differ by a few tens of ppm.\n"
+              "        # Keep the tolerance narrow enough that a distinct clock profile fails.\n"
+              "        if math.isclose(\n"
+              "            constraint,\n"
+              "            requested_clock_mhz,\n"
+              "            rel_tol=1e-4,\n"
+              "            abs_tol=1e-6,\n"
+              "        ):\n"
+              "            matching_constraint = True\n"
+          )
           matches = text.count(old)
           if matches != 1:
               raise SystemExit(
@@ -55,54 +59,13 @@ jobs:
           sentinel = "def test_quantized_nextpnr_constraint_matches_declared_profile"
           if sentinel in test_text:
               raise SystemExit("clock quantization regressions already exist")
-          test_text += '''
-
-
-def test_quantized_nextpnr_constraint_matches_declared_profile() -> None:
-    fpga = fpga_evidence()
-    fpga["clock_mhz"] = "75"
-    fpga["core_mtrigrams_s"] = "5325"
-    report = nextpnr_report()
-    report["fmax"] = {
-        "$glbnet$clk_75mhz": {
-            "achieved": 85.5139389038086,
-            "constraint": 75.00187683105469,
-        }
-    }
-
-    result = build_claim_report(
-        fpga_evidence=fpga,
-        cpu_evidence=cpu_evidence(),
-        nextpnr_report=report,
-        bitstream_sha256=BITSTREAM_SHA256,
-    )
-
-    assert result["implementation"]["clocks"][0]["constraint_mhz"] == pytest.approx(
-        75.00187683105469
-    )
-
-
-def test_distinct_nextpnr_constraint_does_not_match_declared_profile() -> None:
-    fpga = fpga_evidence()
-    fpga["clock_mhz"] = "75"
-    fpga["core_mtrigrams_s"] = "5325"
-    report = nextpnr_report()
-    report["fmax"] = {
-        "$glbnet$clk_wrong_profile": {
-            "achieved": 85.5,
-            "constraint": 74.99,
-        }
-    }
-
-    with pytest.raises(EvidenceError, match="no clock constraint matches"):
-        build_claim_report(
-            fpga_evidence=fpga,
-            cpu_evidence=cpu_evidence(),
-            nextpnr_report=report,
-            bitstream_sha256=BITSTREAM_SHA256,
-        )
-'''
-          tests.write_text(test_text, encoding="utf-8")
+          encoded = (
+              "CgoKZGVmIHRlc3RfcXVhbnRpemVkX25leHRwbnJfY29uc3RyYWludF9tYXRjaGVzX2RlY2xhcmVkX3Byb2ZpbGUoKSAtPiBOb25lOgogICAgZnBnYSA9IGZwZ2FfZXZpZGVuY2UoKQogICAgZnBnYVsiY2xvY2tfbWh6Il0gPSAiNzUiCiAgICBmcGdhWyJjb3JlX210cmlncmFtc19zIl0gPSAiNTMyNSIKICAgIHJlcG9ydCA9IG5leHRwbnJfcmVwb3J0KCkKICAgIHJlcG9ydFsiZm1heCJdID0gewogICAgICAgICIkZ2xibmV0JGNsa183NW1oeiI6IHsKICAgICAgICAgICAgImFjaGlldmVkIjogODUuNTEzOTM4OTAzODA4NiwKICAgICAgICAgICAgImNvbnN0cmFpbnQiOiA3NS4wMDE4NzY4MzEwNTQ2OSwKICAgICAgICB9CiAgICB9CgogICAgcmVzdWx0ID0gYnVpbGRfY2xhaW1fcmVwb3J0KAogICAgICAgIGZwZ2FfZXZpZGVuY2U9ZnBnYSwKICAgICAgICBjcHVfZXZpZGVuY2U9Y3B1X2V2aWRlbmNlKCksCiAgICAgICAgbmV4dHBucl9yZXBvcnQ9cmVwb3J0LAogICAgICAgIGJpdHN0cmVhbV9zaGEyNTY9QklUU1RSRUFNX1NIQTI1NiwKICAgICkKCiAgICBhc3NlcnQgcmVzdWx0WyJpbXBsZW1lbnRhdGlvbiJdWyJjbG9ja3MiXVswXVsiY29uc3RyYWludF9taHoiXSA9PSBweXRlc3QuYXBwcm94KAogICAgICAgIDc1LjAwMTg3NjgzMTA1NDY5CiAgICApCgoKZGVmIHRlc3RfZGlzdGluY3RfbmV4dHBucl9jb25zdHJhaW50X2RvZXNfbm90X21hdGNoX2RlY2xhcmVkX3Byb2ZpbGUoKSAtPiBOb25lOgogICAgZnBnYSA9IGZwZ2FfZXZpZGVuY2UoKQogICAgZnBnYVsiY2xvY2tfbWh6Il0gPSAiNzUiCiAgICBmcGdhWyJjb3JlX210cmlncmFtc19zIl0gPSAiNTMyNSIKICAgIHJlcG9ydCA9IG5leHRwbnJfcmVwb3J0KCkKICAgIHJlcG9ydFsiZm1heCJdID0gewogICAgICAgICIkZ2xibmV0JGNsa193cm9uZ19wcm9maWxlIjogewogICAgICAgICAgICAiYWNoaWV2ZWQiOiA4NS41LAogICAgICAgICAgICAiY29uc3RyYWludCI6IDc0Ljk5LAogICAgICAgIH0KICAgIH0KCiAgICB3aXRoIHB5dGVzdC5yYWlzZXMoRXZpZGVuY2VFcnJvciwgbWF0Y2g9Im5vIGNsb2NrIGNvbnN0cmFpbnQgbWF0Y2hlcyIpOgogICAgICAgIGJ1aWxkX2NsYWltX3JlcG9ydCgKICAgICAgICAgICAgZnBnYV9ldmlkZW5jZT1mcGdhLAogICAgICAgICAgICBjcHVfZXZpZGVuY2U9Y3B1X2V2aWRlbmNlKCksCiAgICAgICAgICAgIG5leHRwbnJfcmVwb3J0PXJlcG9ydCwKICAgICAgICAgICAgYml0c3RyZWFtX3NoYTI1Nj1CSVRTVFJFQU1fU0hBMjU2LAogICAgICAgICkK"
+          )
+          tests.write_text(
+              test_text + b64decode(encoded).decode("utf-8"),
+              encoding="utf-8",
+          )
 
           Path(".github/workflows/apply-bardo-clock-tolerance.yml").unlink()
           PY
