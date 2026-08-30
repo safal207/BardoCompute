@@ -173,7 +173,15 @@ def _nextpnr_summary(report: Mapping[str, Any], requested_clock_mhz: float) -> d
                 f"{source}: clock {name!r} achieved {achieved:.3f} MHz below "
                 f"{constraint:.3f} MHz constraint"
             )
-        if math.isclose(constraint, requested_clock_mhz, rel_tol=1e-6, abs_tol=1e-6):
+        # nextpnr serializes the requested clock after period/frequency
+        # quantization, so the JSON constraint can differ by a few tens of ppm.
+        # Keep the tolerance narrow enough that a distinct clock profile fails.
+        if math.isclose(
+            constraint,
+            requested_clock_mhz,
+            rel_tol=1e-4,
+            abs_tol=1e-6,
+        ):
             matching_constraint = True
         clocks.append(
             {

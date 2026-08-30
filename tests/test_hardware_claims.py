@@ -246,3 +246,49 @@ def test_cli_writes_unresolved_report_and_require_flag_fails(
     assert written["status"] == "CORE_ROOFLINE_ONLY"
     assert "diagnostic" in markdown_output.read_text(encoding="utf-8")
     assert main([*common, "--require-competitive"]) == 3
+
+
+
+def test_quantized_nextpnr_constraint_matches_declared_profile() -> None:
+    fpga = fpga_evidence()
+    fpga["clock_mhz"] = "75"
+    fpga["core_mtrigrams_s"] = "5325"
+    report = nextpnr_report()
+    report["fmax"] = {
+        "$glbnet$clk_75mhz": {
+            "achieved": 85.5139389038086,
+            "constraint": 75.00187683105469,
+        }
+    }
+
+    result = build_claim_report(
+        fpga_evidence=fpga,
+        cpu_evidence=cpu_evidence(),
+        nextpnr_report=report,
+        bitstream_sha256=BITSTREAM_SHA256,
+    )
+
+    assert result["implementation"]["clocks"][0]["constraint_mhz"] == pytest.approx(
+        75.00187683105469
+    )
+
+
+def test_distinct_nextpnr_constraint_does_not_match_declared_profile() -> None:
+    fpga = fpga_evidence()
+    fpga["clock_mhz"] = "75"
+    fpga["core_mtrigrams_s"] = "5325"
+    report = nextpnr_report()
+    report["fmax"] = {
+        "$glbnet$clk_wrong_profile": {
+            "achieved": 85.5,
+            "constraint": 74.99,
+        }
+    }
+
+    with pytest.raises(EvidenceError, match="no clock constraint matches"):
+        build_claim_report(
+            fpga_evidence=fpga,
+            cpu_evidence=cpu_evidence(),
+            nextpnr_report=report,
+            bitstream_sha256=BITSTREAM_SHA256,
+        )
