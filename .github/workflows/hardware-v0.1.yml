@@ -5,8 +5,10 @@ on:
     paths:
       - "rtl/**"
       - "hardware/**"
+      - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_fpga_harness.py"
       - "docs/hardware-v0.1.md"
       - ".github/workflows/hardware-v0.1.yml"
   push:
@@ -15,8 +17,10 @@ on:
     paths:
       - "rtl/**"
       - "hardware/**"
+      - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_fpga_harness.py"
       - "docs/hardware-v0.1.md"
       - ".github/workflows/hardware-v0.1.yml"
   workflow_dispatch:
@@ -34,8 +38,8 @@ jobs:
           python-version: "3.11"
       - name: Install package and test runner
         run: python -m pip install -e . pytest
-      - name: Exhaustive software contract
-        run: python -m pytest -q tests/test_hardware_contract.py
+      - name: Exhaustive software and FPGA-signature contracts
+        run: python -m pytest -q tests/test_hardware_contract.py tests/test_fpga_harness.py
 
   rtl:
     runs-on: ubuntu-latest
@@ -57,5 +61,25 @@ jobs:
         with:
           name: bardo-tx1-hardware-evidence-${{ github.run_id }}
           path: hardware/build/
+          if-no-files-found: warn
+          retention-days: 14
+
+  fpga-ulx3s-85f:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned open-source FPGA toolchain
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          version: "2026-08-30"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and time ULX3S-85F bitstream
+        run: make -C fpga/ulx3s-85f all
+      - name: Upload place-and-route evidence and flashable image
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-tx1-ulx3s-85f-${{ github.run_id }}
+          path: fpga/ulx3s-85f/build/
           if-no-files-found: warn
           retention-days: 14
