@@ -1,0 +1,40 @@
+name: Clean BARDO generated test artifacts
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - ".github/workflows/cleanup-bardo-generated.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out BARDO hardware branch
+        uses: actions/checkout@v4
+        with:
+          ref: hardware/v0.1-bardo-tx1
+          fetch-depth: 0
+
+      - name: Remove generated files and temporary workflow
+        shell: bash
+        run: |
+          rm -rf src/bardocompute.egg-info
+          rm -rf src/bardocompute/__pycache__
+          rm -rf tests/__pycache__
+          rm -f .github/workflows/cleanup-bardo-generated.yml
+          test -n "$(git status --porcelain)"
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remove generated Python artifacts"
+          git push origin HEAD:hardware/v0.1-bardo-tx1
