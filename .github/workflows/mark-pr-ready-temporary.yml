@@ -6,7 +6,7 @@ on:
       - hardware/v0.1-bardo-tx1
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -18,5 +18,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh pr ready 40 --repo "$GITHUB_REPOSITORY"
+          OWNER="$GITHUB_REPOSITORY_OWNER"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          PR_ID="$(gh api graphql \
+            -f query='query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){id}}}' \
+            -f owner="$OWNER" \
+            -f repo="$REPO" \
+            -F number=40 \
+            --jq '.data.repository.pullRequest.id')"
+          test -n "$PR_ID"
+          gh api graphql \
+            -f query='mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){pullRequest{number isDraft}}}' \
+            -f id="$PR_ID" \
+            --jq '.data.markPullRequestReadyForReview.pullRequest'
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/40" --jq '.draft')" = "false"
