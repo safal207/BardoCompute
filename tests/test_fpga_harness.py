@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from bardocompute.hardware_contract import evaluate_trigram, unpack_trigram_lines
@@ -87,7 +88,7 @@ def test_75mhz_profile_remains_a_core_only_bandwidth_boundary() -> None:
     assert fpga_core_mtrigrams_s == 5_325
     assert raw_input_gbytes_s == 5.990625
     assert full_output_gbytes_s == 15.309375
-    assert raw_input_gbytes_s + full_output_gbytes_s == 21.3
+    assert math.isclose(raw_input_gbytes_s + full_output_gbytes_s, 21.3)
 
 
 def test_75mhz_build_and_lock_boundaries_are_declared() -> None:
