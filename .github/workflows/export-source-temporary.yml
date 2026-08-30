@@ -1,0 +1,25 @@
+name: Export source temporary
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-source-${{ github.sha }}
+          path: |
+            .
+            !.git/**
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
