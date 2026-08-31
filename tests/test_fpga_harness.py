@@ -52,6 +52,14 @@ def _rotate_left_one_64(value: int) -> int:
     return ((value << 1) & MASK64) | (value >> 63)
 
 
+def _epoch_frame(epoch_position: int) -> tuple[int, int]:
+    payloads = [
+        _payload_word((epoch_position + lane) & 0x1FF)
+        for lane in range(LANES)
+    ]
+    return epoch_position, _cycle_fold(payloads)
+
+
 def test_ulx3s_epoch_signature_matches_rtl_constant() -> None:
     signature = SIGNATURE_SEED
     valid_outputs = 0
@@ -74,6 +82,27 @@ def test_ulx3s_epoch_signature_matches_rtl_constant() -> None:
 
     assert valid_outputs == 216 * LANES == 15_336
     assert policy_allows == 28 * LANES == 1_988
+    assert signature == EXPECTED_SIGNATURE
+
+
+def test_two_stage_ordered_fold_preserves_frame_order_and_signature() -> None:
+    frames = [_epoch_frame(epoch_position) for epoch_position in range(512)]
+    stage1: tuple[int, int] | None = None
+    stage2: tuple[int, int] | None = None
+    outputs: list[tuple[int, int]] = []
+
+    for incoming in [*frames, None, None]:
+        if stage2 is not None:
+            outputs.append(stage2)
+        stage2 = stage1
+        stage1 = incoming
+
+    assert [position for position, _ in outputs] == list(range(512))
+
+    signature = SIGNATURE_SEED
+    for epoch_position, fold in outputs:
+        signature = _rotate_left_one_64(signature) ^ fold ^ epoch_position
+
     assert signature == EXPECTED_SIGNATURE
 
 
@@ -141,12 +170,16 @@ def test_75mhz_build_lock_and_position_fold_boundaries_are_declared() -> None:
     harness = (
         REPO_ROOT / "fpga/ulx3s-85f/bardo_tx1_ulx3s_bench_75.sv"
     ).read_text(encoding="utf-8")
+    ordered_fold = (
+        REPO_ROOT / "fpga/ulx3s-85f/bardo_tx1_ordered_fold.sv"
+    ).read_text(encoding="utf-8")
 
     for required in (
         "ecppll -i 25 -o 75",
         ".CLKI_DIV(1)",
         ".CLKFB_DIV(3)",
         ".CLKOP_DIV(8)",
+        "bardo_tx1_ordered_fold.sv",
         "synth_ecp5 -top $(TOP_75)",
         "--freq 75",
         "core_mtrigrams_s=5325",
@@ -158,6 +191,13 @@ def test_75mhz_build_lock_and_position_fold_boundaries_are_declared() -> None:
     assert "reset_shift <= 8'h00" in harness
     assert ".clk(clk_75mhz)" in harness
     assert "EXPECTED_SIGNATURE = 64'hf8cc45c1e3244a5a" in harness
-    assert "lane_position_term" in harness
+    assert "payload_epoch_position" in harness
+    assert "bardo_tx1_ordered_fold ordered_fold" in harness
+    assert ".in_epoch_position(payload_epoch_position)" in harness
+    assert ".out_epoch_position(fold_epoch_position)" in harness
+    assert "cycle_fold" not in harness
+    assert "lane_position_term" in ordered_fold
+    assert "group_fold_stage1_0" in ordered_fold
+    assert "combined_fold_stage2" in ordered_fold
     assert "expected_lane_value[8:0]" in harness
     assert "cycle_xor" not in harness
