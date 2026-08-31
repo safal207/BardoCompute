@@ -8,9 +8,12 @@ on:
       - "native/**"
       - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/hardware_oracle.py"
+      - "src/bardocompute/packed.py"
       - "src/bardocompute/cpu_control.py"
       - "src/bardocompute/hardware_claims.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_hardware_oracle.py"
       - "tests/test_cpu_control.py"
       - "tests/test_hardware_claims.py"
       - "tests/test_fpga_harness.py"
@@ -25,9 +28,12 @@ on:
       - "native/**"
       - "fpga/**"
       - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/hardware_oracle.py"
+      - "src/bardocompute/packed.py"
       - "src/bardocompute/cpu_control.py"
       - "src/bardocompute/hardware_claims.py"
       - "tests/test_hardware_contract.py"
+      - "tests/test_hardware_oracle.py"
       - "tests/test_cpu_control.py"
       - "tests/test_hardware_claims.py"
       - "tests/test_fpga_harness.py"
@@ -52,6 +58,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_hardware_contract.py
+          tests/test_hardware_oracle.py
           tests/test_fpga_harness.py
           tests/test_cpu_control.py
           tests/test_hardware_claims.py
