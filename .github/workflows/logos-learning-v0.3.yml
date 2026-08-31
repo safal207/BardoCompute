@@ -1,0 +1,77 @@
+name: BARDO LOGOS learning efficiency v0.3
+
+on:
+  pull_request:
+    paths:
+      - "src/bardocompute/logos_learning.py"
+      - "src/bardocompute/logos_tree.py"
+      - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/packed.py"
+      - "tests/test_logos_learning.py"
+      - "docs/logos-learning-v0.3.md"
+      - ".github/workflows/logos-learning-v0.3.yml"
+  push:
+    branches:
+      - research/v0.3-logos-learning
+    paths:
+      - "src/bardocompute/logos_learning.py"
+      - "src/bardocompute/logos_tree.py"
+      - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/packed.py"
+      - "tests/test_logos_learning.py"
+      - "docs/logos-learning-v0.3.md"
+      - ".github/workflows/logos-learning-v0.3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  learning-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package and test runner
+        run: python -m pip install -e . pytest
+      - name: Check deterministic data, equal budget, and summary insufficiency
+        run: python -m pytest -q tests/test_logos_learning.py
+
+  frozen-learning-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Run RAW vs LOGOS vs HYBRID comparison
+        run: |
+          mkdir -p build/logos-learning
+          python -m bardocompute.logos_learning \
+            --json-output build/logos-learning/report.json \
+            --markdown-output build/logos-learning/report.md \
+            2>&1 | tee build/logos-learning/benchmark.log
+          grep -Fqx 'learning_benchmark=pass' build/logos-learning/benchmark.log
+          grep -Fqx 'learning_gate=pass' build/logos-learning/benchmark.log
+          grep -Fqx 'model_parameters=129' build/logos-learning/benchmark.log
+          grep -Fqx 'local_raw_examples_to_0_80=256' build/logos-learning/benchmark.log
+          grep -Fqx 'local_hybrid_examples_to_0_80=64' build/logos-learning/benchmark.log
+          grep -Fqx 'local_example_efficiency_ratio=4.000000' build/logos-learning/benchmark.log
+          grep -Fqx 'local_logical_training_bits_ratio=25.515625' build/logos-learning/benchmark.log
+      - name: Upload reproducible learning evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-logos-learning-${{ github.run_id }}
+          path: build/logos-learning/
+          if-no-files-found: error
+          retention-days: 14
