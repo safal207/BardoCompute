@@ -71,6 +71,17 @@ def test_commutative_xor_collides_but_ordered_tree_separates_all_7_lane_permutat
     assert len(roots) == math.factorial(7)
 
 
+def test_ordered_root_detects_each_single_input_bit_change() -> None:
+    baseline_bundles = list(deterministic_frame(0, 71))
+    baseline_root = balanced_logos(make_leaves(baseline_bundles)).ordered_root
+
+    for lane in range(71):
+        for bit in range(9):
+            mutated = baseline_bundles.copy()
+            mutated[lane] ^= 1 << bit
+            assert balanced_logos(make_leaves(mutated)).ordered_root != baseline_root
+
+
 def test_fail_closed_invalid_lanes_propagate_to_root() -> None:
     bundles = [0] * 8
     bundles[3] = 0b001_000_000
