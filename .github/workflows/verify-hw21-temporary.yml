@@ -1,0 +1,103 @@
+name: Verify BARDO HW-21 temporary
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - ".github/workflows/verify-hw21-temporary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hardware/v0.1-bardo-tx1
+          fetch-depth: 0
+      - name: Assert the repair commit is present and one-shot patch files are gone
+        run: |
+          set -euo pipefail
+          test -f native/bardo_tx1_expected_table.h
+          test -f tests/test_cpu_oracle.py
+          test ! -e .github/scripts/apply_hw21.py
+          test ! -e .github/workflows/apply-hw21-temporary.yml
+          test ! -e .github/workflows/export-source-temporary.yml
+          grep -Fq 'assign in_ready = rst_n &&' rtl/bardo_tx1.sv
+          grep -Fq 'requires_both_gates' src/bardocompute/hardware_claims.py
+          grep -Fq 'throughput_comparable' src/bardocompute/hardware_claims.py
+          grep -Fq 'lane_position_mix' fpga/ulx3s-85f/bardo_tx1_ulx3s_bench.sv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package and Python tests
+        run: python -m pip install -e . pytest
+      - name: Run full Python regression suite
+        run: python -m pytest -q
+      - name: Install pinned FPGA toolchain
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          version: "2026-08-30"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run exhaustive RTL, generic synthesis, and independent C baseline
+        run: make -C hardware all
+      - name: Build native 25 MHz and PLL 75 MHz bitstreams
+        run: make -C fpga/ulx3s-85f profiles
+      - name: Verify native-profile manifest and fail-closed claim
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python3 -m bardocompute.hardware_claims \
+            --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
+            --cpu-evidence hardware/build/cpu-baseline.log \
+            --nextpnr-report fpga/ulx3s-85f/build/nextpnr-report.json \
+            --sha256s fpga/ulx3s-85f/build/SHA256SUMS \
+            --json-output fpga/ulx3s-85f/build/claim-gate.json \
+            --markdown-output fpga/ulx3s-85f/build/claim-gate.md \
+            2>&1 | tee fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'claim_gate=pass' fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build/claim-gate.log
+          grep -Fq 'nextpnr-report.json' fpga/ulx3s-85f/build/SHA256SUMS
+          grep -Fq 'evidence.txt' fpga/ulx3s-85f/build/SHA256SUMS
+      - name: Verify PLL-profile manifest and fail-closed claim
+        run: |
+          set -euo pipefail
+          PYTHONPATH=src python3 -m bardocompute.hardware_claims \
+            --fpga-evidence fpga/ulx3s-85f/build-75mhz/evidence.txt \
+            --cpu-evidence hardware/build/cpu-baseline.log \
+            --nextpnr-report fpga/ulx3s-85f/build-75mhz/nextpnr-report.json \
+            --sha256s fpga/ulx3s-85f/build-75mhz/SHA256SUMS \
+            --json-output fpga/ulx3s-85f/build-75mhz/claim-gate.json \
+            --markdown-output fpga/ulx3s-85f/build-75mhz/claim-gate.md \
+            2>&1 | tee fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'claim_gate=pass' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build-75mhz/claim-gate.log
+          grep -Fq 'nextpnr-report.json' fpga/ulx3s-85f/build-75mhz/SHA256SUMS
+          grep -Fq 'evidence.txt' fpga/ulx3s-85f/build-75mhz/SHA256SUMS
+      - name: Remove this release-gate workflow and publish the clean head
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/verify-hw21-temporary.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ci: remove completed BARDO HW-21 release gate"
+          git push origin HEAD:hardware/v0.1-bardo-tx1
+      - name: Request final Codex review on the clean verified head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          gh pr comment 40 --repo "$GITHUB_REPOSITORY" --body "@codex review
+
+HW-21 repair is now on clean head \`$HEAD_SHA\`. Please re-review all seven original findings against this exact commit. The release gate reproduced the full Python suite, exhaustive RTL simulation, generic synthesis, independent 512-state C oracle, both ULX3S bitstreams, manifest binding for evidence/timing, and fail-closed claim output. Report any remaining actionable issue; otherwise state that the original P1/P2 findings are closed."
