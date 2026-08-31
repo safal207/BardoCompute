@@ -47,6 +47,7 @@ The experiment fails if any of the following occurs:
 - invalid lanes do not propagate a fail-closed root;
 - non-contiguous spans can be merged;
 - any distinct pairwise swap in the 71-lane fixture preserves the ordered root;
+- any one-bit change in any of the 71 nine-bit input bundles preserves the root;
 - the 7-lane permutation fixture produces fewer than `7! = 5,040` ordered roots;
 - Python and native C disagree on the frozen baseline and swapped roots;
 - the workflow does not expose the flat-XOR permutation collision.
@@ -63,18 +64,53 @@ swapped_ordered_root  = 69b5d0de81c00d8f
 For 71 BARDO-TX1 lanes:
 
 ```text
-full output = 71 × 23 = 1,633 bits/frame
-LOGOS root  = 128 bits/frame
-reduction   = 12.7578125×
-bits removed = 92.16%
-linear dependency depth = 71
-balanced dependency depth = ceil(log2(71)) = 7
-merge nodes = 70
+input                    = 71 × 9  =   639 bits/frame
+full output              = 71 × 23 = 1,633 bits/frame
+LOGOS output                        =   128 bits/frame
+
+output reduction         = 1,633 / 128 = 12.7578125×
+output bits removed                     = 92.16%
+
+full round trip          = 639 + 1,633 = 2,272 bits/frame
+LOGOS round trip         = 639 +   128 =   767 bits/frame
+round-trip reduction     = 2,272 / 767 = 2.962190×
+round-trip bits removed                 = 66.24%
+
+linear dependency depth  = 71
+balanced dependency depth= ceil(log2(71)) = 7
+merge nodes              = 70
 ```
 
-This does not mean the tree performs less total logic. It performs 70 merges.
-The proposed hardware advantage is that independent merges at each level can
-run in parallel and only a bounded root needs to cross the external boundary.
+The `12.76×` figure applies only to the output. The honest external round-trip
+reduction is about `2.96×` when the 9-bit-per-lane input is also counted.
+
+A 128-bit root becomes smaller than materializing all 23-bit lane outputs at
+six lanes:
+
+```text
+5 lanes: 115 output bits — full output is smaller
+6 lanes: 138 output bits — LOGOS becomes smaller
+```
+
+This suggests an adaptive boundary: preserve full results for tiny frames and
+activate LOGOS compression once a frame has at least six lanes.
+
+The tree does not mean less total logic: a 71-lane frame still requires 70
+merge nodes. The proposed hardware advantage is that independent merges at each
+level can run spatially in parallel and only a bounded root crosses the external
+boundary.
+
+## Root-function cost boundary
+
+The v0.2 software oracle uses the SplitMix64 finalizer to get strong deterministic
+diffusion and make permutation defects obvious. SplitMix64 contains 64-bit
+constant multiplications. Those multipliers are **not** assumed cheap on FPGA
+and are excluded from every hardware-efficiency claim.
+
+Before RTL, the root function must either:
+
+- be replaced by a measured hardware-friendly ARX/CRC construction; or
+- be synthesized and charged explicitly in LUT/DSP/FF/timing evidence.
 
 ## Interpretation rules
 
