@@ -1,0 +1,50 @@
+name: Apply ordered-fold timing pipeline
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - ".github/workflows/apply-fold-pipeline-temporary.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hardware/v0.1-bardo-tx1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Reconstruct and verify the timing patch
+        run: |
+          set -euo pipefail
+          cat .github/fold-pipeline.patch.b64.* | base64 --decode | gzip --decompress > /tmp/fold-pipeline.patch
+          echo 'f3fd3117988e53971dc39d41467424e8fd63794a84af1e79ac0b1e3dd4875293  /tmp/fold-pipeline.patch' | sha256sum --check --strict
+          git apply --check /tmp/fold-pipeline.patch
+          git apply /tmp/fold-pipeline.patch
+          rm -f .github/fold-pipeline.patch.b64.*
+      - name: Run focused software contracts
+        run: |
+          set -euo pipefail
+          python -m pip install -e . pytest
+          python -m pytest -q \
+            tests/test_fpga_harness.py \
+            tests/test_hardware_contract.py \
+            tests/test_hardware_oracle.py \
+            tests/test_hardware_claims.py \
+            tests/test_cpu_control.py
+      - name: Publish the pipelined fold
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "hardware: pipeline ordered self-test fold"
+          git push origin HEAD:hardware/v0.1-bardo-tx1
