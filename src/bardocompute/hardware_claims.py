@@ -14,6 +14,7 @@ bitstream.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -25,6 +26,7 @@ SEMANTIC_CONTRACT = "bardo-tx1-v0.1"
 INPUT_BITS_PER_TRIGRAM = 9
 OUTPUT_BITS_PER_TRIGRAM = 23
 COMPETITION_THRESHOLD = 2.0
+EQUAL_THROUGHPUT_REL_TOLERANCE = 0.05
 
 _KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -62,10 +64,12 @@ def parse_key_value_text(text: str, *, source: str = "evidence") -> dict[str, st
     return result
 
 
-def parse_sha256s_text(text: str, *, source: str = "SHA256SUMS") -> str:
-    """Return the single bitstream digest from a sha256sum manifest."""
+def parse_sha256_manifest(
+    text: str, *, source: str = "SHA256SUMS"
+) -> dict[str, str]:
+    """Parse a sha256sum manifest, rejecting malformed or duplicate paths."""
 
-    bitstream_digests: list[str] = []
+    manifest: dict[str, str] = {}
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
         if not line:
@@ -75,16 +79,59 @@ def parse_sha256s_text(text: str, *, source: str = "SHA256SUMS") -> str:
             raise EvidenceError(f"{source}:{line_number}: malformed checksum line")
         digest, filename = parts
         digest = digest.lower()
-        filename = filename.lstrip("*")
+        filename = filename.lstrip("*").strip()
         if not _SHA256_RE.fullmatch(digest):
             raise EvidenceError(f"{source}:{line_number}: invalid SHA-256 digest")
-        if filename.endswith(".bit"):
-            bitstream_digests.append(digest)
+        if not filename:
+            raise EvidenceError(f"{source}:{line_number}: empty filename")
+        if filename in manifest:
+            raise EvidenceError(f"{source}:{line_number}: duplicate filename {filename!r}")
+        manifest[filename] = digest
+    if not manifest:
+        raise EvidenceError(f"{source}: no checksum records found")
+    return manifest
+
+
+def parse_sha256s_text(text: str, *, source: str = "SHA256SUMS") -> str:
+    """Return the single bitstream digest from a sha256sum manifest."""
+
+    manifest = parse_sha256_manifest(text, source=source)
+    bitstream_digests = [
+        digest for filename, digest in manifest.items() if filename.endswith(".bit")
+    ]
     if len(bitstream_digests) != 1:
         raise EvidenceError(
             f"{source}: expected exactly one .bit digest, found {len(bitstream_digests)}"
         )
     return bitstream_digests[0]
+
+
+def verify_manifest_path(
+    manifest: Mapping[str, str], path: Path, *, source: str
+) -> str:
+    """Verify a required claim input against exactly one manifest entry."""
+
+    candidates = [
+        (filename, digest)
+        for filename, digest in manifest.items()
+        if Path(filename).name == path.name
+    ]
+    if len(candidates) != 1:
+        raise EvidenceError(
+            f"{source}: expected exactly one manifest entry for {path.name!r}, "
+            f"found {len(candidates)}"
+        )
+    filename, expected = candidates[0]
+    try:
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise EvidenceError(f"{source}: cannot read {path}: {exc}") from exc
+    if actual != expected:
+        raise EvidenceError(
+            f"{source}: SHA-256 mismatch for {filename!r}: "
+            f"expected {expected}, got {actual}"
+        )
+    return actual
 
 
 def _required(mapping: Mapping[str, Any], key: str, *, source: str) -> Any:
@@ -474,15 +521,28 @@ def build_claim_report(
             cpu_p99_ns = _optional_positive_float(
                 measurement, "cpu_p99_ns", source=source
             )
-            equal_throughput = (
-                _strict_bool(
+            throughput_relative_gap: float | None = None
+            equal_throughput_verified = False
+            if measured_cpu is not None:
+                throughput_relative_gap = abs(
+                    measured_throughput - measured_cpu
+                ) / max(measured_throughput, measured_cpu)
+                equal_throughput_verified = (
+                    throughput_relative_gap
+                    <= EQUAL_THROUGHPUT_REL_TOLERANCE + 1e-12
+                )
+
+            if "equal_throughput" in measurement:
+                declared_equal_throughput = _strict_bool(
                     measurement["equal_throughput"],
                     field="equal_throughput",
                     source=source,
                 )
-                if "equal_throughput" in measurement
-                else False
-            )
+                if declared_equal_throughput != equal_throughput_verified:
+                    raise EvidenceError(
+                        f"{source}: equal_throughput={declared_equal_throughput} "
+                        "contradicts measured FPGA/CPU throughput"
+                    )
 
             energy_ratio: float | None = None
             if measured_cpu is not None and board_power is not None and cpu_power is not None:
@@ -491,7 +551,11 @@ def build_claim_report(
                 ) / (measured_cpu / cpu_power)
 
             latency_ratio: float | None = None
-            if fpga_p99_ns is not None and cpu_p99_ns is not None and equal_throughput:
+            if (
+                fpga_p99_ns is not None
+                and cpu_p99_ns is not None
+                and equal_throughput_verified
+            ):
                 latency_ratio = cpu_p99_ns / fpga_p99_ns
 
             identity_complete = (
@@ -501,6 +565,7 @@ def build_claim_report(
                 and same_host
                 and workload_kind == "real"
                 and measured_cpu is not None
+                and equal_throughput_verified
             )
             passes_energy = (
                 energy_ratio is not None
@@ -510,21 +575,19 @@ def build_claim_report(
                 latency_ratio is not None
                 and latency_ratio + 1e-12 >= COMPETITION_THRESHOLD
             )
-            claim_allowed = identity_complete and (passes_energy or passes_latency)
+            claim_allowed = identity_complete and passes_energy and passes_latency
             status = (
                 "CPU_COMPETITIVE_PASS" if claim_allowed else "END_TO_END_NOT_PROVEN"
             )
 
             reasons = []
             if claim_allowed:
-                if passes_energy:
-                    reasons.append(
-                        f"End-to-end throughput per watt is {energy_ratio:.3f}× the same-host CPU."
-                    )
-                if passes_latency:
-                    reasons.append(
-                        f"p99 latency is {latency_ratio:.3f}× better at equal throughput."
-                    )
+                reasons.append(
+                    f"End-to-end throughput per watt is {energy_ratio:.3f}× the same-host CPU."
+                )
+                reasons.append(
+                    f"p99 latency is {latency_ratio:.3f}× better at verified equal throughput."
+                )
             else:
                 if not includes_transfer:
                     reasons.append("Host/device transfer is excluded from elapsed time.")
@@ -538,6 +601,11 @@ def build_claim_report(
                     reasons.append("The supplied workload is synthetic, not a real workload gate.")
                 if measured_cpu is None:
                     reasons.append("A same-run CPU throughput measurement is missing.")
+                elif not equal_throughput_verified:
+                    reasons.append(
+                        "FPGA and CPU throughput differ beyond the "
+                        f"{EQUAL_THROUGHPUT_REL_TOLERANCE:.0%} equal-throughput tolerance."
+                    )
                 if energy_ratio is None:
                     reasons.append("A complete throughput-per-watt comparison is missing.")
                 elif not passes_energy:
@@ -571,7 +639,9 @@ def build_claim_report(
                 "throughput_per_watt_ratio": energy_ratio,
                 "fpga_p99_ns": fpga_p99_ns,
                 "cpu_p99_ns": cpu_p99_ns,
-                "equal_throughput": equal_throughput,
+                "throughput_relative_gap": throughput_relative_gap,
+                "equal_throughput_tolerance": EQUAL_THROUGHPUT_REL_TOLERANCE,
+                "equal_throughput_verified": equal_throughput_verified,
                 "p99_latency_improvement_ratio": latency_ratio,
             }
 
@@ -583,6 +653,8 @@ def build_claim_report(
         "claim_threshold": {
             "throughput_per_watt_ratio": COMPETITION_THRESHOLD,
             "p99_latency_improvement_ratio": COMPETITION_THRESHOLD,
+            "equal_throughput_relative_tolerance": EQUAL_THROUGHPUT_REL_TOLERANCE,
+            "requires_all_metrics": True,
         },
         "bitstream_sha256": bitstream_sha256,
         "core": {
@@ -682,6 +754,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        manifest_text = args.sha256s.read_text(encoding="utf-8")
+        manifest = parse_sha256_manifest(manifest_text, source=str(args.sha256s))
+        verify_manifest_path(
+            manifest, args.fpga_evidence, source=str(args.sha256s)
+        )
+        verify_manifest_path(
+            manifest, args.nextpnr_report, source=str(args.sha256s)
+        )
         fpga = parse_key_value_text(
             args.fpga_evidence.read_text(encoding="utf-8"),
             source=str(args.fpga_evidence),
@@ -692,7 +772,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         nextpnr = _load_json(args.nextpnr_report, source="nextpnr report")
         bitstream_sha256 = parse_sha256s_text(
-            args.sha256s.read_text(encoding="utf-8"), source=str(args.sha256s)
+            manifest_text, source=str(args.sha256s)
         )
         measurement = (
             _load_json(args.measurement, source="physical measurement")

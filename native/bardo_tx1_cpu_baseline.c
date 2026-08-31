@@ -8,6 +8,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "bardo_tx1_oracle.h"
+
 #if defined(__GNUC__) || defined(__clang__)
 #define NOINLINE __attribute__((noinline))
 #else
@@ -277,8 +279,21 @@ int main(int argc, char **argv) {
     uint32_t *lut_outputs = checked_malloc(count, sizeof(*lut_outputs), "LUT outputs");
 
     uint32_t result_lut[512];
-    for (unsigned bundle = 0; bundle < 512u; ++bundle) {
-        result_lut[bundle] = evaluate_bundle((uint16_t)bundle);
+    for (unsigned bundle = 0; bundle < BARDO_TX1_ORACLE_SIZE; ++bundle) {
+        const uint32_t expected = BARDO_TX1_ORACLE[bundle];
+        const uint32_t actual = evaluate_bundle((uint16_t)bundle);
+        if (actual != expected) {
+            fprintf(
+                stderr,
+                "oracle mismatch bundle=%u actual=0x%06" PRIx32
+                " expected=0x%06" PRIx32 "\n",
+                bundle,
+                actual,
+                expected
+            );
+            return 3;
+        }
+        result_lut[bundle] = expected;
     }
 
     for (size_t i = 0; i < count; ++i) {
@@ -291,14 +306,14 @@ int main(int argc, char **argv) {
     materialize_lut(bundles, lut_outputs, count, result_lut);
     if (memcmp(direct_outputs, lut_outputs, count * sizeof(*direct_outputs)) != 0) {
         fprintf(stderr, "warm materialized output mismatch\n");
-        return 3;
+        return 4;
     }
 
     const uint64_t warm_direct_signature = reduce_direct(bundles, count);
     const uint64_t warm_lut_signature = reduce_lut(bundles, count, result_lut);
     if (warm_direct_signature != warm_lut_signature) {
         fprintf(stderr, "warm reduced signature mismatch\n");
-        return 4;
+        return 5;
     }
 
     double materialize_direct_total = 0.0;
@@ -357,21 +372,21 @@ int main(int argc, char **argv) {
 
     if (memcmp(direct_outputs, lut_outputs, count * sizeof(*direct_outputs)) != 0) {
         fprintf(stderr, "timed materialized output mismatch\n");
-        return 5;
+        return 6;
     }
 
     const uint64_t final_direct_signature = reduce_direct(bundles, count);
     const uint64_t final_lut_signature = reduce_lut(bundles, count, result_lut);
     if (final_direct_signature != final_lut_signature) {
         fprintf(stderr, "timed reduced signature mismatch\n");
-        return 6;
+        return 7;
     }
 
     const uint64_t direct_checksum = checksum_outputs(direct_outputs, count);
     const uint64_t lut_checksum = checksum_outputs(lut_outputs, count);
     if (direct_checksum != lut_checksum) {
         fprintf(stderr, "post-timing output checksum mismatch\n");
-        return 7;
+        return 8;
     }
 
     const double materialize_direct_seconds = materialize_direct_total / (double)repeats;
@@ -389,6 +404,7 @@ int main(int argc, char **argv) {
     printf("valid_sparse_states=216\n");
     printf("full_sparse_address_space=512\n");
     printf("reduction_lanes=%u\n", REDUCTION_LANES);
+    printf("oracle_verified=true\n");
     printf("correct=true\n");
     printf("output_checksum=%" PRIu64 "\n", direct_checksum);
     printf("reduced_signature=%" PRIu64 "\n", final_direct_signature);

@@ -26,6 +26,7 @@ LINE_CODE_FROM_DIGIT: tuple[int, ...] = (
     PACKED_ONE,
 )
 LINE_DIGIT_FROM_CODE = {code: digit for digit, code in enumerate(LINE_CODE_FROM_DIGIT)}
+TX1_PACKED_RESULT_BITS = 23
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +126,25 @@ def evaluate_trigram(lines: Sequence[int]) -> Tx1Result:
         any_transition=any_transition,
         target_count=target_count,
     )
+
+
+def pack_tx1_result(result: Tx1Result) -> int:
+    """Pack one lane result into the 23-bit RTL/C comparison layout."""
+
+    lower, middle, upper = result.settled_lines
+    settled = lower | (middle << 3) | (upper << 6)
+    packed = (
+        result.trigram_index
+        | (int(result.policy_allow) << 8)
+        | (settled << 9)
+        | (int(result.any_discontinuous) << 18)
+        | (int(result.any_transition) << 19)
+        | (result.target_count << 20)
+        | (int(result.valid) << 22)
+    )
+    if not 0 <= packed < (1 << TX1_PACKED_RESULT_BITS):
+        raise ValueError("packed BARDO-TX1 result exceeds 23 bits")
+    return packed
 
 
 def evaluate_lanes(bundles: Iterable[Sequence[int]]) -> tuple[Tx1Result, ...]:

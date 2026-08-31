@@ -89,13 +89,14 @@ Required controls:
 6. fail-closed invalid-state tests;
 7. a physical measurement bound to the exact CI bitstream SHA-256.
 
-Initial success threshold:
+Initial success threshold requires the complete evidence set:
 
-- at least `2x` end-to-end throughput per watt **or**
-- at least `2x` p99 latency improvement at equal throughput,
+- at least `2x` end-to-end throughput per watt **and**
+- at least `2x` p99 latency improvement at measured throughput within `5%`,
 
-on at least one real transition-heavy workload. A higher clock, an on-chip
-self-test, or a synthetic LUT win is not sufficient.
+on at least one real transition-heavy workload. A declarative
+`equal_throughput=true`, a higher clock, an on-chip self-test, or a synthetic
+LUT win is not sufficient.
 
 ## ULX3S implementation profiles
 
@@ -164,8 +165,10 @@ The CPU opponent now has two admissible single-thread paths:
 - materialize the complete semantic output;
 - evaluate the same semantics and perform a bounded reduction.
 
-Correctness is verified outside the timed kernels. The strongest fair path is
-retained, and a serial dependent checksum is explicitly inadmissible.
+Correctness is verified outside the timed kernels. An exhaustive table generated
+from the independent Python contract is consumed by the C LUT and compared with
+the direct C evaluator for all 512 inputs before timing. The strongest fair path
+is retained, and a serial dependent checksum is explicitly inadmissible.
 
 `bardocompute.cpu_control` may report core-only diagnostic ratios, but it always
 leaves:
@@ -177,9 +180,11 @@ cpu_competition_status=unresolved
 ## Machine-enforced claim gate
 
 `bardocompute.hardware_claims` consumes the profile manifest, nextpnr report,
-bitstream checksum, CPU control, and an optional physical measurement. It emits
-JSON and Markdown evidence and fails closed on mismatched clocks, resources,
-semantics, or bitstream identity.
+bitstream checksum, CPU control, and an optional physical measurement. The
+manifest binds the bitstream, `evidence.txt`, and `nextpnr-report.json`; their
+SHA-256 values are verified before claim evaluation. The gate emits JSON and
+Markdown evidence and fails closed on mismatched clocks, resources, semantics,
+or artifact identity.
 
 Native profile:
 
@@ -202,7 +207,7 @@ The statuses are deliberately narrow:
 | `CORE_ROOFLINE_ONLY` | RTL/P&R plus CPU control; no physical host stream | No |
 | `PHYSICAL_SELF_TEST_ONLY` | Exact bitstream passed on-board self-test | No |
 | `END_TO_END_NOT_PROVEN` | Host stream measured, but one or more gates are incomplete | No |
-| `CPU_COMPETITIVE_PASS` | Exact bitstream, real same-workload comparison, and a 2x energy or p99 gate | Yes |
+| `CPU_COMPETITIVE_PASS` | Exact bound artifacts, real same-workload comparison, verified equal throughput, and both 2x energy and p99 gates | Yes |
 
 Ordinary CI requires both profiles to emit:
 
@@ -220,12 +225,13 @@ The v0.1 packet contains:
 - a bit-exact Python reference model;
 - exhaustive Python checks over all 512 sparse bundles;
 - an RTL testbench over the same complete space;
-- a ready/valid backpressure test;
+- reset-safe ready/valid and backpressure tests;
 - generic Yosys synthesis and ECP5 place-and-route;
 - native and generated-PLL clock profiles;
 - a DSP-free structural gate;
-- independently checksummed bitstreams;
-- a fair optimized C control;
+- bitstreams, timing reports, and profile evidence bound in one checksum manifest;
+- a lane-position- and input-sensitive physical self-test signature;
+- a fair optimized C control checked against an independent 512-entry oracle;
 - a claim gate that cannot promote a core roofline into end-to-end speedup.
 
 What remains unproven is physical board execution, host-fed sustained

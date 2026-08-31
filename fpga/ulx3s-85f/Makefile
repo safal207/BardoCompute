@@ -57,7 +57,6 @@ tool-versions: | $(BUILD)
 	} > $(BUILD)/tool-versions.txt 2>&1
 
 evidence: $(BIT) resource-check tool-versions
-	sha256sum $(JSON) $(CONFIG) $(BIT) > $(BUILD)/SHA256SUMS
 	printf '%s\n' \
 	  'board=ULX3S-85F' \
 	  'device=LFE5U-85F' \
@@ -72,6 +71,11 @@ evidence: $(BIT) resource-check tool-versions
 	  'claim_boundary=on-chip generator and reducer; not physical-board or host end-to-end' \
 	  > $(BUILD)/evidence.txt
 	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD)/nextpnr.log > $(BUILD)/timing-summary.txt || true
+	sha256sum \
+	  $(JSON) $(CONFIG) $(BIT) $(REPORT) \
+	  $(BUILD)/evidence.txt $(BUILD)/resource-check.txt \
+	  $(BUILD)/tool-versions.txt $(BUILD)/timing-summary.txt \
+	  > $(BUILD)/SHA256SUMS
 
 $(BUILD_75):
 	mkdir -p $(BUILD_75)
@@ -117,7 +121,6 @@ tool-versions-75: $(PLL_75)
 	} > $(BUILD_75)/tool-versions.txt 2>&1
 
 evidence-75: $(BIT_75) resource-check-75 tool-versions-75
-	sha256sum $(PLL_75) $(JSON_75) $(CONFIG_75) $(BIT_75) > $(BUILD_75)/SHA256SUMS
 	printf '%s\n' \
 	  'board=ULX3S-85F' \
 	  'device=LFE5U-85F' \
@@ -132,6 +135,11 @@ evidence-75: $(BIT_75) resource-check-75 tool-versions-75
 	  'claim_boundary=PLL timing-gated on-chip generator and reducer; not physical-board or host end-to-end' \
 	  > $(BUILD_75)/evidence.txt
 	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD_75)/nextpnr.log > $(BUILD_75)/timing-summary.txt || true
+	sha256sum \
+	  $(PLL_75) $(JSON_75) $(CONFIG_75) $(BIT_75) $(REPORT_75) \
+	  $(BUILD_75)/evidence.txt $(BUILD_75)/resource-check.txt \
+	  $(BUILD_75)/tool-versions.txt $(BUILD_75)/timing-summary.txt \
+	  > $(BUILD_75)/SHA256SUMS
 
 all-75: bitstream-75 resource-check-75 evidence-75
 

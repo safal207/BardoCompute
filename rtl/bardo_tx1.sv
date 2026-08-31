@@ -219,7 +219,9 @@ module bardo_tx1 #(
         end
     end
 
-    assign in_ready = !out_valid || out_ready;
+    // Never advertise an input handshake while the synchronous reset branch
+    // discards transfers. This also supports independently reset producers.
+    assign in_ready = rst_n && (!out_valid || out_ready);
 
     always @(posedge clk) begin
         if (!rst_n) begin

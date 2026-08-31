@@ -231,8 +231,29 @@ module bardo_tx1_tb;
         valid_count = 0;
         seen_indices = {216{1'b0}};
 
-        repeat (3) @(posedge clk);
+        // A producer may leave valid asserted or exit reset before this core.
+        // The core must not advertise a handshake while its reset branch would
+        // discard the transfer.
+        repeat (2) @(posedge clk);
+        @(negedge clk);
+        in_lines = {3'b110, 3'b110, 3'b010};
+        in_valid = 1'b1;
+        #1;
+        if (in_ready !== 1'b0)
+            fail("input ready asserted during reset");
+        @(posedge clk);
+        #1;
+        if (in_ready !== 1'b0)
+            fail("input ready asserted after a reset clock edge");
+        if (out_valid !== 1'b0)
+            fail("reset-time input was captured despite no legal handshake");
+
+        @(negedge clk);
         rst_n = 1'b1;
+        in_valid = 1'b0;
+        #1;
+        if (in_ready !== 1'b1)
+            fail("input ready did not assert after reset release");
 
         for (upper = 0; upper < 8; upper = upper + 1)
             for (middle = 0; middle < 8; middle = middle + 1)
@@ -283,7 +304,7 @@ module bardo_tx1_tb;
         if (out_valid)
             fail("stalled item did not retire when ready returned");
 
-        $display("PASS: exhaustive 512-bundle contract, 216-state bijection, and backpressure");
+        $display("PASS: reset-safe handshake, exhaustive 512-bundle contract, 216-state bijection, and backpressure");
         $finish;
     end
 endmodule

@@ -13,7 +13,7 @@ module bardo_tx1_ulx3s_bench (
 );
     localparam integer LANES = 71;
     localparam [63:0] SIGNATURE_SEED = 64'h424152444f545831; // "BARDOTX1"
-    localparam [63:0] EXPECTED_SIGNATURE = 64'hb0058cd5263c1fc3;
+    localparam [63:0] EXPECTED_SIGNATURE = 64'hf8cc45c1e3244a5a;
 
     // ECP5 configuration initializes registers, then this shift register holds
     // the synchronous core reset active for eight board-clock cycles.
@@ -53,6 +53,10 @@ module bardo_tx1_ulx3s_bench (
     wire [LANES - 1:0] out_any_transition;
     wire [(LANES * 2) - 1:0] out_target_count;
 
+    // Output-side epoch identity. Because BARDO-TX1 is a one-item pipeline,
+    // epoch_position names the stimulus bundle represented by out_* now.
+    reg [8:0] epoch_position;
+
     bardo_tx1 #(.LANES(LANES)) core (
         .clk(clk_25mhz),
         .rst_n(rst_n),
@@ -70,13 +74,26 @@ module bardo_tx1_ulx3s_bench (
         .out_target_count(out_target_count)
     );
 
-    // One 32-bit semantic word per lane. The low nine pad bits make the layout
-    // explicit and leave room for a future input-identity field.
+    // One 32-bit semantic record per lane. The low nine bits bind each
+    // output to the deterministic input identity represented at this epoch.
+    // Each lane uses a distinct two-shift polynomial coefficient. XORing the
+    // resulting 64-bit terms is order-sensitive without multipliers or adders:
+    // for distinct lane coefficients, swapping unequal records changes the fold.
     wire [(LANES * 32) - 1:0] lane_payload;
+    wire [(LANES * 64) - 1:0] lane_position_term;
 
     genvar payload_lane;
     generate
         for (payload_lane = 0; payload_lane < LANES; payload_lane = payload_lane + 1) begin : generate_payload
+            localparam integer SHIFT_A =
+                (payload_lane < 32) ? 0 : ((payload_lane < 63) ? 1 : 2);
+            localparam integer SHIFT_B =
+                (payload_lane < 32) ? (payload_lane + 1)
+                : ((payload_lane < 63) ? (payload_lane - 30) : (payload_lane - 60));
+            wire [9:0] expected_lane_value;
+            wire [63:0] expanded_payload;
+
+            assign expected_lane_value = {1'b0, epoch_position} + payload_lane;
             assign lane_payload[(payload_lane * 32) +: 32] = {
                 out_valid_mask[payload_lane],
                 out_target_count[(payload_lane * 2) +: 2],
@@ -85,21 +102,23 @@ module bardo_tx1_ulx3s_bench (
                 out_settled_lines[(payload_lane * 9) +: 9],
                 out_policy_allow[payload_lane],
                 out_trigram_index[(payload_lane * 8) +: 8],
-                9'b0
+                expected_lane_value[8:0]
             };
+            assign expanded_payload = {32'h00000000, lane_payload[(payload_lane * 32) +: 32]};
+            assign lane_position_term[(payload_lane * 64) +: 64] =
+                (expanded_payload << SHIFT_A) ^ (expanded_payload << SHIFT_B);
         end
     endgenerate
 
-    reg [31:0] cycle_xor;
+    reg [63:0] cycle_fold;
     integer fold_lane;
     always @* begin
-        cycle_xor = 32'h00000000;
+        cycle_fold = 64'h0000000000000000;
         for (fold_lane = 0; fold_lane < LANES; fold_lane = fold_lane + 1)
-            cycle_xor = cycle_xor ^ lane_payload[(fold_lane * 32) +: 32];
+            cycle_fold = cycle_fold ^ lane_position_term[(fold_lane * 64) +: 64];
     end
 
     reg [63:0] signature;
-    reg [8:0] epoch_position;
     reg [31:0] epoch_count;
     reg [24:0] heartbeat;
     reg stream_started;
@@ -108,7 +127,7 @@ module bardo_tx1_ulx3s_bench (
 
     wire [63:0] signature_rotated = {signature[62:0], signature[63]};
     wire [63:0] signature_next = signature_rotated
-        ^ {32'h00000000, cycle_xor}
+        ^ cycle_fold
         ^ {55'h00000000000000, epoch_position};
 
     always @(posedge clk_25mhz) begin

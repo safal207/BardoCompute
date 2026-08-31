@@ -34,9 +34,11 @@ valid continuation of the stream.
 ## Fair CPU boundary
 
 The CPU control materializes the complete semantic output and also evaluates a
-bounded reduction path. Correctness is checked outside the timed kernels, and
-the strongest admissible single-thread path is retained. A serial dependent
-checksum cannot be used as the CPU opponent.
+bounded reduction path. Before timing, the direct C evaluator must match an
+independent 512-entry table generated from the Python hardware contract; the C
+LUT consumes that table rather than generating itself. The strongest admissible
+single-thread path is retained. A serial dependent checksum cannot be used as
+the CPU opponent.
 
 `bardocompute.cpu_control` reports only core-level diagnostic ratios. The
 separate `bardocompute.hardware_claims` gate keeps both FPGA profiles at:
@@ -68,10 +70,14 @@ Each profile continuously generates all 512 sparse 9-bit input bundles. Every
 one of the 71 lanes receives a distinct offset, so each lane sees the complete
 address space during every 512-cycle epoch.
 
-Every output field is folded into the same order-sensitive 64-bit signature:
+Each 32-bit lane record contains every output field plus the corresponding
+9-bit deterministic input identity. A distinct two-shift polynomial coefficient
+is assigned to every lane, then all 64-bit terms are XOR-reduced. This remains
+multiplier-free while detecting every unequal lane swap and every one-bit lane
+record change covered by the Python contract. The resulting signature is:
 
 ```text
-0xb0058cd5263c1fc3
+0xf8cc45c1e3244a5a
 ```
 
 For the native profile, `led[0]` means at least one complete epoch matched and
@@ -107,7 +113,8 @@ make -C fpga/ulx3s-85f profiles
 Outputs are isolated in `build/` and `build-75mhz/`. Each directory contains
 its own Yosys JSON, nextpnr configuration/report, structural-gate result,
 flashable `.bit`, tool record, SHA-256 manifest, CPU-control report, and
-claim-gate evidence.
+claim-gate evidence. The manifest covers both `evidence.txt` and
+`nextpnr-report.json`, and the claim gate verifies those digests before use.
 
 ## Interface reality
 
