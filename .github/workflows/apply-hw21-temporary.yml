@@ -1,0 +1,51 @@
+name: Apply BARDO HW-21 repair temporary
+
+on:
+  push:
+    branches:
+      - hardware/v0.1-bardo-tx1
+    paths:
+      - ".github/scripts/apply_hw21.py"
+      - ".github/workflows/apply-hw21-temporary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hardware/v0.1-bardo-tx1
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply all seven Codex findings
+        run: python .github/scripts/apply_hw21.py
+      - name: Install Python and RTL test dependencies
+        run: |
+          python -m pip install -e . pytest
+          sudo apt-get update
+          sudo apt-get install -y iverilog yosys
+      - name: Run the complete Python suite
+        run: python -m pytest -q
+      - name: Run exhaustive RTL, synthesis, and independent C oracle
+        run: make -C hardware all
+      - name: Remove one-shot repair machinery
+        run: |
+          rm -f .github/scripts/apply_hw21.py
+          rm -f .github/workflows/apply-hw21-temporary.yml
+          rm -f .github/workflows/export-source-temporary.yml
+      - name: Commit the verified repair atomically
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "hardware: close BARDO-TX1 evidence and reset gaps"
+          git push origin HEAD:hardware/v0.1-bardo-tx1
