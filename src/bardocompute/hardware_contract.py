@@ -45,6 +45,36 @@ class Tx1Result:
     any_transition: bool
     target_count: int
 
+    def __post_init__(self) -> None:
+        for field_name in (
+            "valid",
+            "policy_allow",
+            "any_discontinuous",
+            "any_transition",
+        ):
+            if type(getattr(self, field_name)) is not bool:
+                raise ValueError(f"{field_name} must be a boolean")
+
+        if type(self.trigram_index) is not int or not 0 <= self.trigram_index < 216:
+            raise ValueError("trigram_index must be an integer in [0, 215]")
+        if not isinstance(self.settled_lines, tuple) or len(self.settled_lines) != 3:
+            raise ValueError("settled_lines must be a three-element tuple")
+        for code in self.settled_lines:
+            if type(code) is not int or not 0 <= code <= 0b111:
+                raise ValueError("settled line values must be three-bit integers")
+        if type(self.target_count) is not int or not 0 <= self.target_count <= 3:
+            raise ValueError("target_count must be an integer in [0, 3]")
+
+        if not self.valid and (
+            self.trigram_index != 0
+            or self.policy_allow
+            or self.settled_lines != (0, 0, 0)
+            or self.any_discontinuous
+            or self.any_transition
+            or self.target_count != 0
+        ):
+            raise ValueError("invalid results must zero every derived field")
+
 
 def _require_three_bit(code: int) -> None:
     if not isinstance(code, int) or not 0 <= code <= 0b111:

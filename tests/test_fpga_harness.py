@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 import math
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from bardocompute.hardware_contract import (
@@ -19,6 +23,7 @@ SIGNATURE_SEED = 0x424152444F545831
 EXPECTED_SIGNATURE = 0xF8CC45C1E3244A5A
 MASK64 = 0xFFFFFFFFFFFFFFFF
 REPO_ROOT = Path(__file__).resolve().parents[1]
+CHECK_REPORT = REPO_ROOT / "fpga/ulx3s-85f/check_report.py"
 
 
 def _payload_word(bundle: int) -> int:
@@ -201,3 +206,203 @@ def test_75mhz_build_lock_and_position_fold_boundaries_are_declared() -> None:
     assert "combined_fold_stage2" in ordered_fold
     assert "expected_lane_value[8:0]" in harness
     assert "cycle_xor" not in harness
+
+
+def test_75mhz_dynamic_and_full_harness_simulations_are_evidence_bound() -> None:
+    makefile = (REPO_ROOT / "fpga/ulx3s-85f/Makefile").read_text(encoding="utf-8")
+    native_harness = (
+        REPO_ROOT / "fpga/ulx3s-85f/bardo_tx1_ulx3s_bench.sv"
+    ).read_text(encoding="utf-8")
+    fold_tb = (
+        REPO_ROOT / "fpga/ulx3s-85f/tb_bardo_tx1_ordered_fold.sv"
+    ).read_text(encoding="utf-8")
+    harness_tb = (
+        REPO_ROOT / "fpga/ulx3s-85f/tb_bardo_tx1_ulx3s_bench_75.sv"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        ".DELETE_ON_ERROR:",
+        "sim-75:",
+        "ordered-fold-sim.log",
+        "harness-sim.log",
+        "tb_bardo_tx1_ordered_fold.sv",
+        "tb_bardo_tx1_ulx3s_bench_75.sv",
+        "$(ORDERED_FOLD_SIM_LOG_75) $(HARNESS_SIM_LOG_75)",
+        "nextpnr_report_sha256=",
+        "$(REPORT_CHECK) $(REPORT) 25",
+        "$(REPORT_CHECK) $(REPORT_75) 75",
+    ):
+        assert required in makefile
+
+    assert "grep -E 'Max frequency|Device utilisation" not in makefile
+    assert "vvp $(ORDERED_FOLD_SIM_75) > $(ORDERED_FOLD_SIM_LOG_75) 2>&1" in makefile
+    assert "vvp $(HARNESS_SIM_75) > $(HARNESS_SIM_LOG_75) 2>&1" in makefile
+    assert "vvp $(ORDERED_FOLD_SIM_75) 2>&1 | tee" not in makefile
+    assert "vvp $(HARNESS_SIM_75) 2>&1 | tee" not in makefile
+    assert "RTL := ../../rtl/bardo_tx1.sv $(TOP).sv" in makefile
+    assert "bardo_tx1_ordered_fold" not in native_harness
+    assert "changed frame epoch identity or order" in fold_tb
+    assert "output differs from dynamic lane fold" in fold_tb
+    assert "EXPECTED_SIGNATURE = 64'hf8cc45c1e3244a5a" in harness_tb
+    assert "full harness changed ordered-fold epoch identity" in harness_tb
+    assert "full harness did not produce the frozen self-test signature" in harness_tb
+
+
+def test_failed_simulation_log_cannot_be_reused_by_make(tmp_path: Path) -> None:
+    fpga_dir = REPO_ROOT / "fpga/ulx3s-85f"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_vvp = fake_bin / "vvp"
+    fake_vvp.write_text(
+        "#!/bin/sh\nprintf '%s\\n' 'partial failed simulation'\nexit 1\n",
+        encoding="utf-8",
+    )
+    fake_vvp.chmod(0o755)
+
+    ordered_fold = tmp_path / "ordered_fold.sv"
+    ordered_fold_tb = tmp_path / "ordered_fold_tb.sv"
+    simulation = tmp_path / "simulation"
+    simulation_log = tmp_path / "ordered-fold-sim.log"
+    ordered_fold.write_text("// dependency\n", encoding="utf-8")
+    ordered_fold_tb.write_text("// dependency\n", encoding="utf-8")
+    simulation.write_text("placeholder\n", encoding="utf-8")
+
+    command = [
+        "make",
+        "-f",
+        str(fpga_dir / "Makefile"),
+        str(simulation_log),
+        f"ORDERED_FOLD_75={ordered_fold}",
+        f"ORDERED_FOLD_TB_75={ordered_fold_tb}",
+        f"ORDERED_FOLD_SIM_75={simulation}",
+        f"ORDERED_FOLD_SIM_LOG_75={simulation_log}",
+    ]
+    environment = os.environ.copy()
+    environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+
+    for _ in range(2):
+        result = subprocess.run(
+            command,
+            cwd=fpga_dir,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode != 0
+        assert not simulation_log.exists()
+
+
+def _nextpnr_report() -> dict[str, object]:
+    return {
+        "utilization": {
+            "MULT18X18D": {"used": 0},
+            "TRELLIS_COMB": {"used": 5927},
+            "TRELLIS_FF": {"used": 1863},
+        },
+        "fmax": {
+            "$glbnet$clk_75mhz": {
+                "achieved": 90.09,
+                "constraint": 75.002,
+            }
+        },
+    }
+
+
+def _run_report_check(
+    tmp_path: Path,
+    report: dict[str, object],
+    expected_clock_mhz: float = 75.0,
+) -> subprocess.CompletedProcess[str]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    report_path = tmp_path / "nextpnr-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    return subprocess.run(
+        [
+            sys.executable,
+            str(CHECK_REPORT),
+            str(report_path),
+            str(expected_clock_mhz),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_report_check_accepts_finite_timing_and_integral_resources(
+    tmp_path: Path,
+) -> None:
+    result = _run_report_check(tmp_path, _nextpnr_report())
+
+    assert result.returncode == 0, result.stderr
+    assert "resource_check=pass" in result.stdout
+
+
+def test_report_check_rejects_boolean_and_non_integral_resources(
+    tmp_path: Path,
+) -> None:
+    for index, bad_value in enumerate((True, 0.0, 1.5, "0")):
+        report = _nextpnr_report()
+        utilization = report["utilization"]
+        assert isinstance(utilization, dict)
+        utilization["MULT18X18D"] = {"used": bad_value}
+
+        case_path = tmp_path / str(index)
+        case_path.mkdir()
+        result = _run_report_check(case_path, report)
+
+        assert result.returncode == 1
+        assert "must be an integer" in result.stderr
+        assert "resource_check=fail" in result.stderr
+
+
+def test_report_check_rejects_non_finite_timing(tmp_path: Path) -> None:
+    for index, (field, bad_value) in enumerate(
+        (("achieved", math.nan), ("constraint", math.inf))
+    ):
+        report = _nextpnr_report()
+        fmax = report["fmax"]
+        assert isinstance(fmax, dict)
+        timing = fmax["$glbnet$clk_75mhz"]
+        assert isinstance(timing, dict)
+        timing[field] = bad_value
+
+        case_path = tmp_path / str(index)
+        case_path.mkdir()
+        result = _run_report_check(case_path, report)
+
+        assert result.returncode == 1
+        assert f"{field!r} must be finite" in result.stderr
+        assert "resource_check=fail" in result.stderr
+
+
+def test_report_check_requires_exactly_one_expected_clock_constraint(
+    tmp_path: Path,
+) -> None:
+    unrelated = _nextpnr_report()
+    fmax = unrelated["fmax"]
+    assert isinstance(fmax, dict)
+    timing = fmax["$glbnet$clk_75mhz"]
+    assert isinstance(timing, dict)
+    timing["constraint"] = 25.0
+
+    unrelated_result = _run_report_check(tmp_path / "unrelated", unrelated)
+    assert unrelated_result.returncode == 1
+    assert "expected exactly one fmax constraint matching 75 MHz, found 0" in (
+        unrelated_result.stderr
+    )
+
+    duplicate = _nextpnr_report()
+    duplicate_fmax = duplicate["fmax"]
+    assert isinstance(duplicate_fmax, dict)
+    duplicate_fmax["duplicate_clock"] = {
+        "achieved": 80.0,
+        "constraint": 75.0,
+    }
+
+    duplicate_result = _run_report_check(tmp_path / "duplicate", duplicate)
+    assert duplicate_result.returncode == 1
+    assert "expected exactly one fmax constraint matching 75 MHz, found 2" in (
+        duplicate_result.stderr
+    )

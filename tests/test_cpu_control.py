@@ -57,6 +57,14 @@ def test_rejects_weaker_compatibility_alias() -> None:
         build_cpu_control_report(fpga=fpga(), cpu=evidence)
 
 
+def test_rejects_multi_thread_cpu_control() -> None:
+    evidence = cpu()
+    evidence["threads"] = "2"
+
+    with pytest.raises(CpuControlError, match="threads must equal 1"):
+        build_cpu_control_report(fpga=fpga(), cpu=evidence)
+
+
 def test_parser_rejects_duplicate_keys() -> None:
     with pytest.raises(CpuControlError, match="duplicate key"):
         parse_key_values("threads=1\nthreads=2\n", source="fixture")

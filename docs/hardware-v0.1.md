@@ -125,6 +125,12 @@ It also reasserts the entire self-test reset if PLL lock is lost. Passing
 place-and-route only promotes the profile to a timing-gated implementation
 artifact; it does not prove that a physical board ran correctly at 75 MHz.
 
+Only the 75 MHz harness adds the two-stage, full-throughput ordered fold used
+by its continuous self-test. The BARDO-TX1 semantic core and the native 25 MHz
+harness remain unchanged. Dynamic RTL regressions must prove that the delayed
+fold retains the originating epoch, creates no steady-state bubbles, and
+reaches the same frozen signature as the native semantic contract.
+
 ## Current native-profile evidence
 
 The last reproduced 25 MHz implementation artifact reported:
@@ -168,7 +174,7 @@ The CPU opponent now has two admissible single-thread paths:
 Correctness is verified outside the timed kernels. An exhaustive table generated
 from the independent Python contract is consumed by the C LUT and compared with
 the direct C evaluator for all 512 inputs before timing. The strongest fair path
-is retained, and a serial dependent checksum is explicitly inadmissible.
+is retained, and a serial-dependent checksum is explicitly inadmissible.
 
 `bardocompute.cpu_control` may report core-only diagnostic ratios, but it always
 leaves:
@@ -179,12 +185,23 @@ cpu_competition_status=unresolved
 
 ## Machine-enforced claim gate
 
-`bardocompute.hardware_claims` consumes the profile manifest, nextpnr report,
-bitstream checksum, CPU control, and an optional physical measurement. The
-manifest binds the bitstream, `evidence.txt`, and `nextpnr-report.json`; their
-SHA-256 values are verified before claim evaluation. The gate emits JSON and
-Markdown evidence and fails closed on mismatched clocks, resources, semantics,
-or artifact identity.
+`bardocompute.hardware_claims` consumes the profile manifest, the actual
+bitstream path, nextpnr report, CPU control, and an optional physical
+measurement. It hashes the bytes supplied through `--bitstream`, requires that
+leaf name to match the selected profile, and compares the digest with the
+unique safe manifest entry. Every supplied claim-input leaf is rejected if it
+is a direct symlink. The FPGA evidence, nextpnr report, and selected bitstream
+are always manifest-bound. If a physical measurement is supplied, that
+measurement and the CPU evidence become manifest-bound inputs too.
+
+The manifest accepts only canonical relative POSIX paths and rejects absolute
+paths, traversal, ambiguous segments, backslashes, and duplicate entries.
+Before the claim gate runs, exact-head CI verifies every listed file with
+`sha256sum --check`. The 75 MHz manifest includes both dynamic self-test logs;
+both profiles bind the final nextpnr JSON, resource-check result, generated
+implementation inputs, bitstream, tool record, and human-readable timing
+summary. That summary is derived only from the final nextpnr JSON and the
+resource check, never scraped from a transient console log.
 
 Native profile:
 
@@ -193,6 +210,7 @@ PYTHONPATH=src python -m bardocompute.hardware_claims \
   --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
   --cpu-evidence hardware/build/cpu-baseline.log \
   --nextpnr-report fpga/ulx3s-85f/build/nextpnr-report.json \
+  --bitstream fpga/ulx3s-85f/build/bardo_tx1_ulx3s_bench.bit \
   --sha256s fpga/ulx3s-85f/build/SHA256SUMS \
   --json-output fpga/ulx3s-85f/build/claim-gate.json \
   --markdown-output fpga/ulx3s-85f/build/claim-gate.md
@@ -218,6 +236,21 @@ claim_allowed=false
 
 `--require-competitive` is reserved for the physical release gate.
 
+The repository's ordinary CI invocation deliberately supplies no physical
+measurement. In that mode the CPU log may remain outside the pre-gate manifest
+because the only admissible result is `CORE_ROOFLINE_ONLY` with
+`claim_allowed=false`; it cannot authorize a CPU claim. A physical invocation
+must manifest-bind both the measurement and CPU evidence before either can
+affect a competitive decision.
+
+`SHA256SUMS` is a self-generated (informally, self-signed) checksum manifest,
+not a cryptographic signature or trusted build attestation. By itself it proves
+only the byte consistency of its listed pre-gate inputs. Source provenance
+comes from the GitHub Actions run that checks out and rechecks one exact source
+SHA, records the workflow SHA/run attempt, and
+publishes an artifact named with that source SHA. Copying or coherently
+reassembling the bundle outside that run does not preserve source provenance.
+
 ## Verification boundary
 
 The v0.1 packet contains:
@@ -228,6 +261,9 @@ The v0.1 packet contains:
 - reset-safe ready/valid and backpressure tests;
 - generic Yosys synthesis and ECP5 place-and-route;
 - native and generated-PLL clock profiles;
+- a two-stage ordered fold confined to the 75 MHz self-test harness;
+- dynamic ordered-fold and full-harness simulation logs bound into the 75 MHz
+  manifest;
 - a DSP-free structural gate;
 - bitstreams, timing reports, and profile evidence bound in one checksum manifest;
 - a lane-position- and input-sensitive physical self-test signature;
@@ -235,7 +271,8 @@ The v0.1 packet contains:
 - a claim gate that cannot promote a core roofline into end-to-end speedup.
 
 What remains unproven is physical board execution, host-fed sustained
-throughput, power, temperature, p99 latency, and a real-workload CPU win.
+throughput, power, temperature, p99 latency, and a real-workload CPU win. This
+repository state therefore makes **no physical or CPU-competitive claim**.
 
 ## Hardware path
 
@@ -244,10 +281,11 @@ throughput, power, temperature, p99 latency, and a real-workload CPU win.
 Portable SystemVerilog, exhaustive simulation, generic synthesis, and a frozen
 software/RTL encoding contract are present.
 
-### H1a — FPGA implementation artifacts: complete when CI is green
+### H1a — FPGA implementation artifacts: complete when exact-head CI is green
 
 The native and PLL profiles independently complete ECP5 synthesis,
-place-and-route, resource/timing validation, and bitstream packaging.
+place-and-route, resource/timing validation, and bitstream packaging. Evidence
+from another commit or a mutable branch name does not satisfy this boundary.
 
 ### H1b — physical FPGA evidence: open
 

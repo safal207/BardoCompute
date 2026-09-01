@@ -18,7 +18,7 @@ import hashlib
 import json
 import math
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
 SCHEMA_VERSION = 1
@@ -27,6 +27,21 @@ INPUT_BITS_PER_TRIGRAM = 9
 OUTPUT_BITS_PER_TRIGRAM = 23
 COMPETITION_THRESHOLD = 2.0
 EQUAL_THROUGHPUT_REL_TOLERANCE = 0.05
+EXPECTED_SELF_TEST_SIGNATURE = "0xf8cc45c1e3244a5a"
+FPGA_PROFILE_CONTRACTS: Mapping[str, Mapping[str, Any]] = {
+    "native_25mhz": {
+        "top": "bardo_tx1_ulx3s_bench",
+        "bitstream": "bardo_tx1_ulx3s_bench.bit",
+        "clock_mhz": 25.0,
+        "expected_self_test_signature": EXPECTED_SELF_TEST_SIGNATURE,
+    },
+    "pll_25_to_75mhz": {
+        "top": "bardo_tx1_ulx3s_bench_75",
+        "bitstream": "bardo_tx1_ulx3s_bench_75.bit",
+        "clock_mhz": 75.0,
+        "expected_self_test_signature": EXPECTED_SELF_TEST_SIGNATURE,
+    },
+}
 
 _KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -67,7 +82,7 @@ def parse_key_value_text(text: str, *, source: str = "evidence") -> dict[str, st
 def parse_sha256_manifest(
     text: str, *, source: str = "SHA256SUMS"
 ) -> dict[str, str]:
-    """Parse a sha256sum manifest, rejecting malformed or duplicate paths."""
+    """Parse a sha256sum manifest, rejecting unsafe or duplicate paths."""
 
     manifest: dict[str, str] = {}
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
@@ -84,6 +99,19 @@ def parse_sha256_manifest(
             raise EvidenceError(f"{source}:{line_number}: invalid SHA-256 digest")
         if not filename:
             raise EvidenceError(f"{source}:{line_number}: empty filename")
+        pure_path = PurePosixPath(filename)
+        if (
+            "\x00" in filename
+            or "\\" in filename
+            or not pure_path.parts
+            or pure_path.is_absolute()
+            or re.match(r"^[A-Za-z]:", filename)
+            or any(part in {".", ".."} for part in pure_path.parts)
+            or pure_path.as_posix() != filename
+        ):
+            raise EvidenceError(
+                f"{source}:{line_number}: unsafe manifest path {filename!r}"
+            )
         if filename in manifest:
             raise EvidenceError(f"{source}:{line_number}: duplicate filename {filename!r}")
         manifest[filename] = digest
@@ -92,10 +120,41 @@ def parse_sha256_manifest(
     return manifest
 
 
-def parse_sha256s_text(text: str, *, source: str = "SHA256SUMS") -> str:
-    """Return the single bitstream digest from a sha256sum manifest."""
+def _manifest_digest_for_basename(
+    manifest: Mapping[str, str], basename: str, *, source: str
+) -> tuple[str, str]:
+    if PurePosixPath(basename).name != basename or not basename:
+        raise EvidenceError(f"{source}: expected manifest basename is invalid")
+    candidates = [
+        (filename, digest)
+        for filename, digest in manifest.items()
+        if PurePosixPath(filename).name == basename
+    ]
+    if len(candidates) != 1:
+        raise EvidenceError(
+            f"{source}: expected exactly one manifest entry for {basename!r}, "
+            f"found {len(candidates)}"
+        )
+    return candidates[0]
+
+
+def parse_sha256s_text(
+    text: str,
+    *,
+    source: str = "SHA256SUMS",
+    expected_filename: str | None = None,
+) -> str:
+    """Return the profile-selected bitstream digest from a checksum manifest."""
 
     manifest = parse_sha256_manifest(text, source=source)
+    if expected_filename is not None:
+        if not expected_filename.endswith(".bit"):
+            raise EvidenceError(f"{source}: expected bitstream filename is invalid")
+        _, digest = _manifest_digest_for_basename(
+            manifest, expected_filename, source=source
+        )
+        return digest
+
     bitstream_digests = [
         digest for filename, digest in manifest.items() if filename.endswith(".bit")
     ]
@@ -106,32 +165,71 @@ def parse_sha256s_text(text: str, *, source: str = "SHA256SUMS") -> str:
     return bitstream_digests[0]
 
 
-def verify_manifest_path(
-    manifest: Mapping[str, str], path: Path, *, source: str
-) -> str:
-    """Verify a required claim input against exactly one manifest entry."""
+def _read_input_bytes(path: Path, *, source: str) -> bytes:
+    """Read one direct regular-file input without following a leaf symlink."""
 
-    candidates = [
-        (filename, digest)
-        for filename, digest in manifest.items()
-        if Path(filename).name == path.name
-    ]
-    if len(candidates) != 1:
-        raise EvidenceError(
-            f"{source}: expected exactly one manifest entry for {path.name!r}, "
-            f"found {len(candidates)}"
-        )
-    filename, expected = candidates[0]
     try:
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.is_symlink():
+            raise EvidenceError(f"{source}: direct symlink input is not allowed: {path}")
+        if not path.is_file():
+            raise EvidenceError(f"{source}: input is not a regular file: {path}")
+        return path.read_bytes()
+    except EvidenceError:
+        raise
     except OSError as exc:
         raise EvidenceError(f"{source}: cannot read {path}: {exc}") from exc
+
+
+def _decode_utf8(data: bytes, *, path: Path, source: str) -> str:
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise EvidenceError(f"{source}: {path} is not valid UTF-8: {exc}") from exc
+
+
+def _verify_manifest_bytes(
+    manifest: Mapping[str, str],
+    path: Path,
+    data: bytes,
+    *,
+    source: str,
+    expected_filename: str | None = None,
+) -> str:
+    basename = expected_filename if expected_filename is not None else path.name
+    if expected_filename is not None and path.name != expected_filename:
+        raise EvidenceError(
+            f"{source}: input basename {path.name!r} does not match selected profile "
+            f"bitstream {expected_filename!r}"
+        )
+    filename, expected = _manifest_digest_for_basename(
+        manifest, basename, source=source
+    )
+    actual = hashlib.sha256(data).hexdigest()
     if actual != expected:
         raise EvidenceError(
             f"{source}: SHA-256 mismatch for {filename!r}: "
             f"expected {expected}, got {actual}"
         )
     return actual
+
+
+def verify_manifest_path(
+    manifest: Mapping[str, str],
+    path: Path,
+    *,
+    source: str,
+    expected_filename: str | None = None,
+) -> str:
+    """Verify a required claim input against exactly one manifest entry."""
+
+    data = _read_input_bytes(path, source=source)
+    return _verify_manifest_bytes(
+        manifest,
+        path,
+        data,
+        source=source,
+        expected_filename=expected_filename,
+    )
 
 
 def _required(mapping: Mapping[str, Any], key: str, *, source: str) -> Any:
@@ -189,6 +287,60 @@ def _optional_positive_float(
     if key not in mapping or mapping[key] is None:
         return None
     return _positive_float(mapping[key], field=key, source=source)
+
+
+def _validate_fpga_profile(fpga_evidence: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind declared FPGA evidence to one immutable build-profile contract."""
+
+    source = "FPGA evidence"
+    profile = str(_required(fpga_evidence, "profile", source=source)).strip()
+    contract = FPGA_PROFILE_CONTRACTS.get(profile)
+    if contract is None:
+        raise EvidenceError(f"{source}: unsupported profile {profile!r}")
+
+    top = str(_required(fpga_evidence, "top", source=source)).strip()
+    bitstream = str(_required(fpga_evidence, "bitstream", source=source)).strip()
+    clock_mhz = _positive_float(
+        _required(fpga_evidence, "clock_mhz", source=source),
+        field="clock_mhz",
+        source=source,
+    )
+    expected_signature = str(
+        _required(fpga_evidence, "expected_self_test_signature", source=source)
+    ).strip().lower()
+
+    if top != contract["top"]:
+        raise EvidenceError(f"{source}: top {top!r} does not match profile {profile!r}")
+    if bitstream != contract["bitstream"]:
+        raise EvidenceError(
+            f"{source}: bitstream {bitstream!r} does not match profile {profile!r}"
+        )
+    if not math.isclose(
+        clock_mhz,
+        float(contract["clock_mhz"]),
+        rel_tol=0.0,
+        abs_tol=1e-9,
+    ):
+        raise EvidenceError(
+            f"{source}: clock_mhz={clock_mhz:.6g} does not match profile {profile!r}"
+        )
+    if not _SIGNATURE_RE.fullmatch(expected_signature):
+        raise EvidenceError(
+            f"{source}: expected_self_test_signature must be a 64-bit "
+            "0x-prefixed value"
+        )
+    if expected_signature != contract["expected_self_test_signature"]:
+        raise EvidenceError(
+            f"{source}: expected_self_test_signature does not match profile {profile!r}"
+        )
+
+    return {
+        "profile": profile,
+        "top": top,
+        "bitstream": bitstream,
+        "clock_mhz": clock_mhz,
+        "expected_self_test_signature": expected_signature,
+    }
 
 
 def _nextpnr_summary(report: Mapping[str, Any], requested_clock_mhz: float) -> dict[str, Any]:
@@ -334,6 +486,7 @@ def build_claim_report(
 
     fpga_source = "FPGA evidence"
     cpu_source = "CPU evidence"
+    profile_contract = _validate_fpga_profile(fpga_evidence)
 
     board = str(_required(fpga_evidence, "board", source=fpga_source))
     lanes = _positive_int(
@@ -341,11 +494,7 @@ def build_claim_report(
         field="lanes",
         source=fpga_source,
     )
-    clock_mhz = _positive_float(
-        _required(fpga_evidence, "clock_mhz", source=fpga_source),
-        field="clock_mhz",
-        source=fpga_source,
-    )
+    clock_mhz = float(profile_contract["clock_mhz"])
     reported_core = _positive_float(
         _required(fpga_evidence, "core_mtrigrams_s", source=fpga_source),
         field="core_mtrigrams_s",
@@ -421,6 +570,12 @@ def build_claim_report(
                 raise EvidenceError(
                     f"{source}: self_test_signature must be a 64-bit 0x-prefixed value"
                 )
+            signature = signature.lower()
+            if signature != profile_contract["expected_self_test_signature"]:
+                raise EvidenceError(
+                    f"{source}: self_test_signature does not match the selected "
+                    "FPGA profile"
+                )
             epochs = _positive_int(
                 _required(measurement, "completed_epochs", source=source),
                 field="completed_epochs",
@@ -433,7 +588,7 @@ def build_claim_report(
             ]
             physical = {
                 "mode": mode,
-                "self_test_signature": signature.lower(),
+                "self_test_signature": signature,
                 "completed_epochs": epochs,
             }
         else:
@@ -658,6 +813,12 @@ def build_claim_report(
         },
         "bitstream_sha256": bitstream_sha256,
         "core": {
+            "profile": profile_contract["profile"],
+            "top": profile_contract["top"],
+            "bitstream": profile_contract["bitstream"],
+            "expected_self_test_signature": profile_contract[
+                "expected_self_test_signature"
+            ],
             "board": board,
             "lanes": lanes,
             "clock_mhz": clock_mhz,
@@ -720,14 +881,22 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_json(path: Path, *, source: str) -> Mapping[str, Any]:
+def _parse_json_bytes(
+    data: bytes, path: Path, *, source: str
+) -> Mapping[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        value = json.loads(_decode_utf8(data, path=path, source=source))
+    except json.JSONDecodeError as exc:
         raise EvidenceError(f"{source}: cannot read valid JSON from {path}: {exc}") from exc
     if not isinstance(value, Mapping):
         raise EvidenceError(f"{source}: top-level JSON value must be an object")
     return value
+
+
+def _load_json(path: Path, *, source: str) -> Mapping[str, Any]:
+    return _parse_json_bytes(
+        _read_input_bytes(path, source=source), path, source=source
+    )
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -743,6 +912,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--cpu-evidence", type=Path, required=True)
     parser.add_argument("--nextpnr-report", type=Path, required=True)
     parser.add_argument("--sha256s", type=Path, required=True)
+    parser.add_argument(
+        "--bitstream",
+        type=Path,
+        required=True,
+        help="actual profile-selected .bit file; its bytes are hashed by this gate",
+    )
     parser.add_argument("--measurement", type=Path)
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, required=True)
@@ -754,31 +929,86 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        manifest_text = args.sha256s.read_text(encoding="utf-8")
-        manifest = parse_sha256_manifest(manifest_text, source=str(args.sha256s))
-        verify_manifest_path(
-            manifest, args.fpga_evidence, source=str(args.sha256s)
+        manifest_bytes = _read_input_bytes(args.sha256s, source=str(args.sha256s))
+        manifest_text = _decode_utf8(
+            manifest_bytes, path=args.sha256s, source=str(args.sha256s)
         )
-        verify_manifest_path(
-            manifest, args.nextpnr_report, source=str(args.sha256s)
+        manifest = parse_sha256_manifest(manifest_text, source=str(args.sha256s))
+        fpga_bytes = _read_input_bytes(
+            args.fpga_evidence, source=str(args.fpga_evidence)
+        )
+        _verify_manifest_bytes(
+            manifest,
+            args.fpga_evidence,
+            fpga_bytes,
+            source=str(args.sha256s),
         )
         fpga = parse_key_value_text(
-            args.fpga_evidence.read_text(encoding="utf-8"),
+            _decode_utf8(
+                fpga_bytes,
+                path=args.fpga_evidence,
+                source=str(args.fpga_evidence),
+            ),
             source=str(args.fpga_evidence),
         )
+        profile_contract = _validate_fpga_profile(fpga)
+
+        cpu_bytes = _read_input_bytes(args.cpu_evidence, source=str(args.cpu_evidence))
         cpu = parse_key_value_text(
-            args.cpu_evidence.read_text(encoding="utf-8"),
+            _decode_utf8(
+                cpu_bytes,
+                path=args.cpu_evidence,
+                source=str(args.cpu_evidence),
+            ),
             source=str(args.cpu_evidence),
         )
-        nextpnr = _load_json(args.nextpnr_report, source="nextpnr report")
-        bitstream_sha256 = parse_sha256s_text(
-            manifest_text, source=str(args.sha256s)
+
+        nextpnr_bytes = _read_input_bytes(
+            args.nextpnr_report, source=str(args.nextpnr_report)
         )
-        measurement = (
-            _load_json(args.measurement, source="physical measurement")
-            if args.measurement is not None
-            else None
+        _verify_manifest_bytes(
+            manifest,
+            args.nextpnr_report,
+            nextpnr_bytes,
+            source=str(args.sha256s),
         )
+        nextpnr = _parse_json_bytes(
+            nextpnr_bytes, args.nextpnr_report, source="nextpnr report"
+        )
+
+        bitstream_bytes = _read_input_bytes(args.bitstream, source=str(args.bitstream))
+        bitstream_sha256 = _verify_manifest_bytes(
+            manifest,
+            args.bitstream,
+            bitstream_bytes,
+            source=str(args.sha256s),
+            expected_filename=str(profile_contract["bitstream"]),
+        )
+
+        measurement: Mapping[str, Any] | None = None
+        if args.measurement is not None:
+            measurement_bytes = _read_input_bytes(
+                args.measurement, source=str(args.measurement)
+            )
+            # Physical results may promote a CPU-competition claim, so all three
+            # evidence roles must be byte-bound to the same manifest.
+            _verify_manifest_bytes(
+                manifest,
+                args.cpu_evidence,
+                cpu_bytes,
+                source=str(args.sha256s),
+            )
+            _verify_manifest_bytes(
+                manifest,
+                args.measurement,
+                measurement_bytes,
+                source=str(args.sha256s),
+            )
+            measurement = _parse_json_bytes(
+                measurement_bytes,
+                args.measurement,
+                source="physical measurement",
+            )
         report = build_claim_report(
             fpga_evidence=fpga,
             cpu_evidence=cpu,

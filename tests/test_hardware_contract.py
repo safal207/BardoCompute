@@ -6,9 +6,11 @@ import pytest
 
 from bardocompute.hardware_contract import (
     LINE_CODE_FROM_DIGIT,
+    Tx1Result,
     decode_trigram_index,
     evaluate_lanes,
     evaluate_trigram,
+    pack_tx1_result,
     pack_trigram_lines,
     unpack_trigram_lines,
 )
@@ -73,6 +75,61 @@ def test_parallel_reference_is_lane_independent() -> None:
     )
     assert evaluate_lanes(lanes) == tuple(evaluate_trigram(lines) for lines in lanes)
     assert [result.policy_allow for result in evaluate_lanes(lanes)] == [True, False, False]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"valid": 1},
+        {"trigram_index": -1},
+        {"trigram_index": 216},
+        {"trigram_index": 1.5},
+        {"trigram_index": True},
+        {"policy_allow": 1},
+        {"settled_lines": (0, 0)},
+        {"settled_lines": [0, 0, 0]},
+        {"settled_lines": (-1, 0, 0)},
+        {"settled_lines": (0, 0, 8)},
+        {"settled_lines": (0, 0, True)},
+        {"any_discontinuous": 0},
+        {"any_transition": 1},
+        {"target_count": -1},
+        {"target_count": 4},
+        {"target_count": 1.0},
+        {"target_count": True},
+    ],
+)
+def test_result_fields_cannot_overlap_the_packed_layout(
+    overrides: dict[str, object],
+) -> None:
+    fields: dict[str, object] = {
+        "valid": True,
+        "trigram_index": 0,
+        "policy_allow": False,
+        "settled_lines": (0, 0, 0),
+        "any_discontinuous": False,
+        "any_transition": False,
+        "target_count": 0,
+    }
+    fields.update(overrides)
+
+    with pytest.raises(ValueError):
+        Tx1Result(**fields)  # type: ignore[arg-type]
+
+
+def test_invalid_result_cannot_smuggle_nonzero_fields_into_packed_output() -> None:
+    with pytest.raises(ValueError, match="invalid results must zero"):
+        pack_tx1_result(
+            Tx1Result(
+                valid=False,
+                trigram_index=0,
+                policy_allow=False,
+                settled_lines=(0, 0, 0),
+                any_discontinuous=False,
+                any_transition=False,
+                target_count=1,
+            )
+        )
 
 
 @pytest.mark.parametrize("bad", [-1, 8, 99, 1.5, "010"])

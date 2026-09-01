@@ -31,3 +31,19 @@ checks the `216` valid-state bijection, verifies fail-closed behavior for
 reserved codes, and tests output stability under backpressure.
 
 `cpu-smoke` runs both a direct optimized C evaluator and a fair 512-entry lookup-table path over the same sparse 9-bit inputs. Future FPGA claims must beat the faster measured CPU path after interface costs.
+
+## Evidence boundary
+
+The hardware workflow checks out and rechecks one exact source SHA at the start
+and end of every job. FPGA artifacts are named with that SHA plus the workflow
+run and attempt, and every listed pre-gate checksum entry is verified before
+its claim gate runs. The checksum manifest is self-produced: it proves only the
+byte consistency of its listed pre-gate files. It is not a signature, a
+source-provenance attestation, or evidence that a board executed the bitstream;
+source provenance depends on retaining the artifact with its exact GitHub
+Actions run.
+
+Ordinary CI is intentionally limited to `CORE_ROOFLINE_ONLY` with
+`claim_allowed=false`. No physical execution, end-to-end CPU speedup, power, or
+latency claim is made until independently collected physical inputs are bound
+and the separate competitive gate passes.

@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
+.DELETE_ON_ERROR:
 
 BUILD := build
 TOP := bardo_tx1_ulx3s_bench
@@ -20,9 +21,17 @@ JSON_75 := $(BUILD_75)/$(TOP_75).json
 CONFIG_75 := $(BUILD_75)/$(TOP_75).config
 BIT_75 := $(BUILD_75)/$(TOP_75).bit
 REPORT_75 := $(BUILD_75)/nextpnr-report.json
+ORDERED_FOLD_TB_75 := tb_bardo_tx1_ordered_fold.sv
+HARNESS_TB_75 := tb_bardo_tx1_ulx3s_bench_75.sv
+ORDERED_FOLD_SIM_75 := $(BUILD_75)/bardo_tx1_ordered_fold_tb
+HARNESS_SIM_75 := $(BUILD_75)/bardo_tx1_ulx3s_bench_75_tb
+ORDERED_FOLD_SIM_LOG_75 := $(BUILD_75)/ordered-fold-sim.log
+HARNESS_SIM_LOG_75 := $(BUILD_75)/harness-sim.log
+ORDERED_FOLD_SIM_PASS_75 := PASS: dynamic ordered-fold pipeline preserves exact output and epoch order
+HARNESS_SIM_PASS_75 := PASS: 75 MHz harness completes frozen ordered-fold signature epoch
 
 .PHONY: all profiles bitstream resource-check evidence tool-versions \
-	all-75 bitstream-75 resource-check-75 evidence-75 tool-versions-75 clean
+	all-75 sim-75 bitstream-75 resource-check-75 evidence-75 tool-versions-75 clean
 
 # Preserve the original native-clock profile as the default build.
 all: bitstream resource-check evidence
@@ -46,7 +55,7 @@ $(BIT): $(CONFIG)
 bitstream: $(BIT)
 
 resource-check: $(CONFIG) $(REPORT_CHECK)
-	python3 $(REPORT_CHECK) $(REPORT) 2>&1 | tee $(BUILD)/resource-check.txt
+	python3 $(REPORT_CHECK) $(REPORT) 25 2>&1 | tee $(BUILD)/resource-check.txt
 	grep -Fqx 'resource_check=pass' $(BUILD)/resource-check.txt
 
 tool-versions: | $(BUILD)
@@ -63,6 +72,9 @@ evidence: $(BIT) resource-check tool-versions
 	  'device=LFE5U-85F' \
 	  'package=CABGA381' \
 	  'profile=native_25mhz' \
+	  'top=bardo_tx1_ulx3s_bench' \
+	  'bitstream=bardo_tx1_ulx3s_bench.bit' \
+	  'expected_self_test_signature=0xf8cc45c1e3244a5a' \
 	  'input_clock_mhz=25' \
 	  'clock_source=board_oscillator' \
 	  'clock_mhz=25' \
@@ -71,7 +83,10 @@ evidence: $(BIT) resource-check tool-versions
 	  'cpu_competition_status=unresolved' \
 	  'claim_boundary=on-chip generator and reducer; not physical-board or host end-to-end' \
 	  > $(BUILD)/evidence.txt
-	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD)/nextpnr.log > $(BUILD)/timing-summary.txt || true
+	{ \
+	  sha256sum $(REPORT) | awk '{print "nextpnr_report_sha256=" $$1}'; \
+	  cat $(BUILD)/resource-check.txt; \
+	} > $(BUILD)/timing-summary.txt
 	sha256sum \
 	  $(JSON) $(CONFIG) $(BIT) $(REPORT) \
 	  $(BUILD)/evidence.txt $(BUILD)/resource-check.txt \
@@ -80,6 +95,27 @@ evidence: $(BIT) resource-check tool-versions
 
 $(BUILD_75):
 	mkdir -p $(BUILD_75)
+
+$(ORDERED_FOLD_SIM_75): $(ORDERED_FOLD_75) $(ORDERED_FOLD_TB_75) | $(BUILD_75)
+	iverilog -g2012 -Wall -s bardo_tx1_ordered_fold_tb \
+	  -o $(ORDERED_FOLD_SIM_75) $(ORDERED_FOLD_75) $(ORDERED_FOLD_TB_75)
+
+$(ORDERED_FOLD_SIM_LOG_75): $(ORDERED_FOLD_SIM_75)
+	vvp $(ORDERED_FOLD_SIM_75) > $(ORDERED_FOLD_SIM_LOG_75) 2>&1
+	cat $(ORDERED_FOLD_SIM_LOG_75)
+	grep -Fqx '$(ORDERED_FOLD_SIM_PASS_75)' $(ORDERED_FOLD_SIM_LOG_75)
+
+$(HARNESS_SIM_75): ../../rtl/bardo_tx1.sv $(ORDERED_FOLD_75) $(TOP_75).sv $(HARNESS_TB_75) | $(BUILD_75)
+	iverilog -g2012 -Wall -s bardo_tx1_ulx3s_bench_75_tb \
+	  -o $(HARNESS_SIM_75) ../../rtl/bardo_tx1.sv $(ORDERED_FOLD_75) \
+	  $(TOP_75).sv $(HARNESS_TB_75)
+
+$(HARNESS_SIM_LOG_75): $(HARNESS_SIM_75)
+	vvp $(HARNESS_SIM_75) > $(HARNESS_SIM_LOG_75) 2>&1
+	cat $(HARNESS_SIM_LOG_75)
+	grep -Fqx '$(HARNESS_SIM_PASS_75)' $(HARNESS_SIM_LOG_75)
+
+sim-75: $(ORDERED_FOLD_SIM_LOG_75) $(HARNESS_SIM_LOG_75)
 
 # Generate rather than hand-maintain the ECP5 PLL primitive. The pinned ecppll
 # tool must derive 25 -> 75 MHz inside the legal ECP5 PFD/VCO range.
@@ -109,11 +145,13 @@ $(BIT_75): $(CONFIG_75)
 bitstream-75: $(BIT_75)
 
 resource-check-75: $(CONFIG_75) $(REPORT_CHECK)
-	python3 $(REPORT_CHECK) $(REPORT_75) 2>&1 | tee $(BUILD_75)/resource-check.txt
+	python3 $(REPORT_CHECK) $(REPORT_75) 75 2>&1 | tee $(BUILD_75)/resource-check.txt
 	grep -Fqx 'resource_check=pass' $(BUILD_75)/resource-check.txt
 
 tool-versions-75: $(PLL_75)
 	{ \
+	  iverilog -V; \
+	  vvp -V; \
 	  yosys -V; \
 	  nextpnr-ecp5 --version; \
 	  ecppack --version || true; \
@@ -121,12 +159,15 @@ tool-versions-75: $(PLL_75)
 	  sha256sum $(PLL_75); \
 	} > $(BUILD_75)/tool-versions.txt 2>&1
 
-evidence-75: $(BIT_75) resource-check-75 tool-versions-75
+evidence-75: $(BIT_75) resource-check-75 tool-versions-75 sim-75
 	printf '%s\n' \
 	  'board=ULX3S-85F' \
 	  'device=LFE5U-85F' \
 	  'package=CABGA381' \
 	  'profile=pll_25_to_75mhz' \
+	  'top=bardo_tx1_ulx3s_bench_75' \
+	  'bitstream=bardo_tx1_ulx3s_bench_75.bit' \
+	  'expected_self_test_signature=0xf8cc45c1e3244a5a' \
 	  'input_clock_mhz=25' \
 	  'clock_source=ecp5_pll' \
 	  'clock_mhz=75' \
@@ -135,11 +176,15 @@ evidence-75: $(BIT_75) resource-check-75 tool-versions-75
 	  'cpu_competition_status=unresolved' \
 	  'claim_boundary=PLL timing-gated on-chip generator and reducer; not physical-board or host end-to-end' \
 	  > $(BUILD_75)/evidence.txt
-	grep -E 'Max frequency|Device utilisation|TRELLIS_SLICE|Timing' $(BUILD_75)/nextpnr.log > $(BUILD_75)/timing-summary.txt || true
+	{ \
+	  sha256sum $(REPORT_75) | awk '{print "nextpnr_report_sha256=" $$1}'; \
+	  cat $(BUILD_75)/resource-check.txt; \
+	} > $(BUILD_75)/timing-summary.txt
 	sha256sum \
 	  $(PLL_75) $(JSON_75) $(CONFIG_75) $(BIT_75) $(REPORT_75) \
 	  $(BUILD_75)/evidence.txt $(BUILD_75)/resource-check.txt \
 	  $(BUILD_75)/tool-versions.txt $(BUILD_75)/timing-summary.txt \
+	  $(ORDERED_FOLD_SIM_LOG_75) $(HARNESS_SIM_LOG_75) \
 	  > $(BUILD_75)/SHA256SUMS
 
 all-75: bitstream-75 resource-check-75 evidence-75

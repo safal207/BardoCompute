@@ -52,6 +52,12 @@ policy. See [`docs/hardware-v0.1.md`](docs/hardware-v0.1.md).
 Any CPU-competition claim must beat the fastest equal-information CPU baseline
 end to end, including memory and host/device interface costs.
 
+Current CI produces exact-SHA-bound implementation artifacts and deliberately
+stops at `CORE_ROOFLINE_ONLY` with `claim_allowed=false`. Its self-produced
+checksum manifests verify listed pre-gate bytes; they are not signatures or
+standalone source-provenance attestations. No physical-board result or
+CPU-competitive result is claimed.
+
 ## Roadmap
 
 ```text

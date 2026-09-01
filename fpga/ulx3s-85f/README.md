@@ -37,7 +37,7 @@ The CPU control materializes the complete semantic output and also evaluates a
 bounded reduction path. Before timing, the direct C evaluator must match an
 independent 512-entry table generated from the Python hardware contract; the C
 LUT consumes that table rather than generating itself. The strongest admissible
-single-thread path is retained. A serial dependent checksum cannot be used as
+single-thread path is retained. A serial-dependent checksum cannot be used as
 the CPU opponent.
 
 `bardocompute.cpu_control` reports only core-level diagnostic ratios. The
@@ -80,6 +80,12 @@ record change covered by the Python contract. The resulting signature is:
 0xf8cc45c1e3244a5a
 ```
 
+The native harness keeps its original fold. The 75 MHz harness routes the same
+ordered lane records through a two-stage registered fold that still accepts one
+frame per cycle. Its dynamic simulations check delayed epoch identity,
+steady-state continuity, reset behavior, and one complete frozen-signature
+epoch; both simulation logs are checksum-bound into the 75 MHz manifest.
+
 For the native profile, `led[0]` means at least one complete epoch matched and
 `led[1]` is sticky failure. The 75 MHz profile additionally exposes PLL lock on
 `led[2]`. Both streams continue after the first pass so physical power and
@@ -113,8 +119,25 @@ make -C fpga/ulx3s-85f profiles
 Outputs are isolated in `build/` and `build-75mhz/`. Each directory contains
 its own Yosys JSON, nextpnr configuration/report, structural-gate result,
 flashable `.bit`, tool record, SHA-256 manifest, CPU-control report, and
-claim-gate evidence. The manifest covers both `evidence.txt` and
-`nextpnr-report.json`, and the claim gate verifies those digests before use.
+claim-gate evidence. Before the claim gate runs, CI checks every manifest entry.
+The gate independently hashes the actual `--bitstream` bytes and verifies the
+selected profile's bitstream, `evidence.txt`, and `nextpnr-report.json`. A
+physical claim attempt also requires the CPU evidence and measurement JSON in
+the manifest. Paths must be canonical, relative POSIX paths; traversal,
+ambiguous components, backslashes, and duplicates are rejected. Every supplied
+claim-input leaf is also rejected if it is a direct symlink.
+
+`timing-summary.txt` is rendered from the final nextpnr JSON and
+`resource-check.txt`, not scraped from transient nextpnr console output. The
+75 MHz manifest additionally binds `ordered-fold-sim.log` and
+`harness-sim.log`.
+
+The in-bundle `SHA256SUMS` is self-generated (informally, self-signed), not a
+cryptographic signature or build attestation. It proves only that its listed
+pre-gate files match one another. Source provenance exists only when the
+artifact is retained with the exact-SHA CI run that asserted the checkout,
+recorded the workflow SHA and run attempt, and named the uploaded artifact with
+that source SHA.
 
 ## Interface reality
 
@@ -135,4 +158,5 @@ BARDO boundary therefore needs one or more of:
 
 The bitstreams are implementation artifacts. Physical execution, watts,
 temperature, sustained host-fed throughput, and end-to-end CPU competition
-remain separate evidence gates.
+remain separate evidence gates. No physical or CPU-competitive result is
+claimed by the current repository state.

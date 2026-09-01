@@ -26,12 +26,31 @@ def fpga_evidence() -> dict[str, str]:
         "board": "ULX3S-85F",
         "device": "LFE5U-85F",
         "package": "CABGA381",
+        "profile": "native_25mhz",
+        "top": "bardo_tx1_ulx3s_bench",
+        "bitstream": "bardo_tx1_ulx3s_bench.bit",
+        "expected_self_test_signature": "0xf8cc45c1e3244a5a",
         "clock_mhz": "25",
         "lanes": "71",
         "core_mtrigrams_s": "1775",
         "cpu_competition_status": "unresolved",
         "claim_boundary": "on-chip generator and reducer; not host end-to-end",
     }
+
+
+def fpga_evidence_75() -> dict[str, str]:
+    evidence = fpga_evidence()
+    evidence.update(
+        {
+            "profile": "pll_25_to_75mhz",
+            "top": "bardo_tx1_ulx3s_bench_75",
+            "bitstream": "bardo_tx1_ulx3s_bench_75.bit",
+            "expected_self_test_signature": "0xf8cc45c1e3244a5a",
+            "clock_mhz": "75",
+            "core_mtrigrams_s": "5325",
+        }
+    )
+    return evidence
 
 
 def cpu_evidence() -> dict[str, str]:
@@ -113,6 +132,78 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _cli_fixture(
+    tmp_path: Path,
+    *,
+    fpga: dict[str, str] | None = None,
+    report: dict[str, object] | None = None,
+    measurement: dict[str, object] | None = None,
+    bind_physical_inputs: bool = False,
+) -> tuple[list[str], dict[str, Path]]:
+    fpga = fpga or fpga_evidence()
+    report = report or nextpnr_report()
+    bitstream_name = fpga["bitstream"]
+
+    paths = {
+        "fpga": tmp_path / "evidence.txt",
+        "cpu": tmp_path / "cpu.log",
+        "report": tmp_path / "nextpnr-report.json",
+        "sums": tmp_path / "SHA256SUMS",
+        "bitstream": tmp_path / bitstream_name,
+        "measurement": tmp_path / "measurement.json",
+        "json_output": tmp_path / "claim.json",
+        "markdown_output": tmp_path / "claim.md",
+    }
+    paths["fpga"].write_text(
+        "\n".join(f"{key}={value}" for key, value in fpga.items()) + "\n",
+        encoding="utf-8",
+    )
+    paths["cpu"].write_text(
+        "\n".join(f"{key}={value}" for key, value in cpu_evidence().items()) + "\n",
+        encoding="utf-8",
+    )
+    paths["report"].write_text(json.dumps(report), encoding="utf-8")
+    paths["bitstream"].write_bytes(b"BARDO fixture bitstream\x00")
+
+    manifest_lines = [
+        f"{_digest(paths['bitstream'])}  build/{bitstream_name}",
+        f"{_digest(paths['fpga'])}  build/evidence.txt",
+        f"{_digest(paths['report'])}  build/nextpnr-report.json",
+    ]
+    if measurement is not None:
+        measurement = dict(measurement)
+        measurement["bitstream_sha256"] = _digest(paths["bitstream"])
+        paths["measurement"].write_text(json.dumps(measurement), encoding="utf-8")
+        if bind_physical_inputs:
+            manifest_lines.extend(
+                [
+                    f"{_digest(paths['cpu'])}  control/cpu.log",
+                    f"{_digest(paths['measurement'])}  physical/measurement.json",
+                ]
+            )
+    paths["sums"].write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+
+    args = [
+        "--fpga-evidence",
+        str(paths["fpga"]),
+        "--cpu-evidence",
+        str(paths["cpu"]),
+        "--nextpnr-report",
+        str(paths["report"]),
+        "--sha256s",
+        str(paths["sums"]),
+        "--bitstream",
+        str(paths["bitstream"]),
+        "--json-output",
+        str(paths["json_output"]),
+        "--markdown-output",
+        str(paths["markdown_output"]),
+    ]
+    if measurement is not None:
+        args.extend(["--measurement", str(paths["measurement"])])
+    return args, paths
+
+
 def test_core_roofline_is_reported_but_not_promoted_to_speedup() -> None:
     report = build()
 
@@ -152,6 +243,22 @@ def test_on_chip_self_test_is_physical_correctness_not_cpu_competition() -> None
     assert report["status"] == "PHYSICAL_SELF_TEST_ONLY"
     assert report["claim_allowed"] is False
     assert report["physical_measurement"]["completed_epochs"] == 1000
+    assert report["core"]["profile"] == "native_25mhz"
+    assert report["core"]["top"] == "bardo_tx1_ulx3s_bench"
+    assert report["core"]["bitstream"] == "bardo_tx1_ulx3s_bench.bit"
+
+
+def test_on_chip_self_test_rejects_contradictory_signature() -> None:
+    measurement = measurement_base("on_chip_self_test")
+    measurement.update(
+        {
+            "self_test_signature": "0x0000000000000000",
+            "completed_epochs": 1,
+        }
+    )
+
+    with pytest.raises(EvidenceError, match="does not match the selected FPGA profile"):
+        build(measurement)
 
 
 def test_real_host_stream_requires_and_passes_both_energy_and_p99_gates() -> None:
@@ -284,60 +391,41 @@ def test_manifest_binds_claim_inputs_to_the_bitstream_profile(tmp_path: Path) ->
 
 
 def test_cli_writes_unresolved_report_and_rejects_mixed_profile(
-    tmp_path: Path,
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fpga_path = tmp_path / "evidence.txt"
-    cpu_path = tmp_path / "cpu.log"
-    report_path = tmp_path / "nextpnr-report.json"
-    sums_path = tmp_path / "SHA256SUMS"
-    json_output = tmp_path / "claim.json"
-    markdown_output = tmp_path / "claim.md"
-
-    fpga_path.write_text(
-        "\n".join(f"{key}={value}" for key, value in fpga_evidence().items()) + "\n",
-        encoding="utf-8",
-    )
-    cpu_path.write_text(
-        "\n".join(f"{key}={value}" for key, value in cpu_evidence().items()) + "\n",
-        encoding="utf-8",
-    )
-    report_path.write_text(json.dumps(nextpnr_report()), encoding="utf-8")
-    sums_path.write_text(
-        f"{BITSTREAM_SHA256}  build/bardo_tx1.bit\n"
-        f"{_digest(fpga_path)}  build/evidence.txt\n"
-        f"{_digest(report_path)}  build/nextpnr-report.json\n",
-        encoding="utf-8",
-    )
-
-    common = [
-        "--fpga-evidence",
-        str(fpga_path),
-        "--cpu-evidence",
-        str(cpu_path),
-        "--nextpnr-report",
-        str(report_path),
-        "--sha256s",
-        str(sums_path),
-        "--json-output",
-        str(json_output),
-        "--markdown-output",
-        str(markdown_output),
-    ]
+    common, paths = _cli_fixture(tmp_path)
 
     assert main(common) == 0
-    written = json.loads(json_output.read_text(encoding="utf-8"))
+    written = json.loads(paths["json_output"].read_text(encoding="utf-8"))
     assert written["status"] == "CORE_ROOFLINE_ONLY"
-    assert "diagnostic" in markdown_output.read_text(encoding="utf-8")
+    assert written["bitstream_sha256"] == _digest(paths["bitstream"])
+    assert "diagnostic" in paths["markdown_output"].read_text(encoding="utf-8")
     assert main([*common, "--require-competitive"]) == 3
 
-    report_path.write_text(json.dumps({**nextpnr_report(), "mixed": True}), encoding="utf-8")
+    # Rehash the modified report so this is a semantic profile failure, not a
+    # manifest-tamper failure. A 75 MHz report cannot back the native profile.
+    mixed_report = nextpnr_report()
+    mixed_report["fmax"] = {
+        "$glbnet$clk_75mhz": {
+            "achieved": 90.0,
+            "constraint": 75.00187683105469,
+        }
+    }
+    paths["report"].write_text(json.dumps(mixed_report), encoding="utf-8")
+    manifest = paths["sums"].read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        written_digest := parse_sha256_manifest(manifest)["build/nextpnr-report.json"],
+        _digest(paths["report"]),
+        1,
+    )
+    assert written_digest != _digest(paths["report"])
+    paths["sums"].write_text(manifest, encoding="utf-8")
     assert main(common) == 1
+    assert "no clock constraint matches" in capsys.readouterr().out
 
 
 def test_quantized_nextpnr_constraint_matches_declared_profile() -> None:
-    fpga = fpga_evidence()
-    fpga["clock_mhz"] = "75"
-    fpga["core_mtrigrams_s"] = "5325"
+    fpga = fpga_evidence_75()
     report = nextpnr_report()
     report["fmax"] = {
         "$glbnet$clk_75mhz": {
@@ -359,9 +447,7 @@ def test_quantized_nextpnr_constraint_matches_declared_profile() -> None:
 
 
 def test_distinct_nextpnr_constraint_does_not_match_declared_profile() -> None:
-    fpga = fpga_evidence()
-    fpga["clock_mhz"] = "75"
-    fpga["core_mtrigrams_s"] = "5325"
+    fpga = fpga_evidence_75()
     report = nextpnr_report()
     report["fmax"] = {
         "$glbnet$clk_wrong_profile": {
@@ -377,3 +463,151 @@ def test_distinct_nextpnr_constraint_does_not_match_declared_profile() -> None:
             nextpnr_report=report,
             bitstream_sha256=BITSTREAM_SHA256,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("top", "bardo_tx1_ulx3s_bench_75"),
+        ("bitstream", "bardo_tx1_ulx3s_bench_75.bit"),
+        ("clock_mhz", "75"),
+        ("expected_self_test_signature", "0x0000000000000000"),
+    ],
+)
+def test_native_profile_rejects_mismatched_contract_fields(
+    field: str, value: str
+) -> None:
+    fpga = fpga_evidence()
+    fpga[field] = value
+
+    with pytest.raises(EvidenceError, match="does not match profile"):
+        build_claim_report(
+            fpga_evidence=fpga,
+            cpu_evidence=cpu_evidence(),
+            nextpnr_report=nextpnr_report(),
+            bitstream_sha256=BITSTREAM_SHA256,
+        )
+
+
+def test_unknown_fpga_profile_fails_closed() -> None:
+    fpga = fpga_evidence()
+    fpga["profile"] = "native_100mhz"
+
+    with pytest.raises(EvidenceError, match="unsupported profile"):
+        build_claim_report(
+            fpga_evidence=fpga,
+            cpu_evidence=cpu_evidence(),
+            nextpnr_report=nextpnr_report(),
+            bitstream_sha256=BITSTREAM_SHA256,
+        )
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "../evidence.txt",
+        "build/../evidence.txt",
+        "/tmp/evidence.txt",
+        "./evidence.txt",
+        "build/./evidence.txt",
+        "build//evidence.txt",
+        "C:/build/evidence.txt",
+        r"build\evidence.txt",
+    ],
+)
+def test_manifest_rejects_unsafe_paths(unsafe_path: str) -> None:
+    with pytest.raises(EvidenceError, match="unsafe manifest path"):
+        parse_sha256_manifest(f"{BITSTREAM_SHA256}  {unsafe_path}\n")
+
+
+def test_profile_selects_exact_bitstream_from_multi_profile_manifest() -> None:
+    manifest = (
+        f"{'b' * 64}  build/bardo_tx1_ulx3s_bench_75.bit\n"
+        f"{BITSTREAM_SHA256}  build/bardo_tx1_ulx3s_bench.bit\n"
+    )
+
+    assert (
+        parse_sha256s_text(
+            manifest, expected_filename="bardo_tx1_ulx3s_bench.bit"
+        )
+        == BITSTREAM_SHA256
+    )
+
+
+def test_cli_hashes_actual_bitstream_bytes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args, paths = _cli_fixture(tmp_path)
+    paths["bitstream"].write_bytes(b"tampered after manifest generation")
+
+    assert main(args) == 1
+    assert "SHA-256 mismatch" in capsys.readouterr().out
+    assert not paths["json_output"].exists()
+
+
+def test_cli_rejects_bitstream_with_wrong_profile_basename(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args, paths = _cli_fixture(tmp_path)
+    wrong_path = tmp_path / "renamed.bit"
+    paths["bitstream"].rename(wrong_path)
+    args[args.index("--bitstream") + 1] = str(wrong_path)
+
+    assert main(args) == 1
+    assert "does not match selected profile bitstream" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("flag", "path_key"),
+    [
+        ("--fpga-evidence", "fpga"),
+        ("--cpu-evidence", "cpu"),
+        ("--nextpnr-report", "report"),
+        ("--sha256s", "sums"),
+        ("--bitstream", "bitstream"),
+        ("--measurement", "measurement"),
+    ],
+)
+def test_cli_rejects_direct_symlink_inputs(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    flag: str,
+    path_key: str,
+) -> None:
+    measurement = host_measurement() if flag == "--measurement" else None
+    args, paths = _cli_fixture(
+        tmp_path,
+        measurement=measurement,
+        bind_physical_inputs=measurement is not None,
+    )
+    path = paths[path_key]
+    backing = path.with_name(f"{path.name}.real")
+    path.rename(backing)
+    path.symlink_to(backing.name)
+    args[args.index(flag) + 1] = str(path)
+
+    assert main(args) == 1
+    assert "direct symlink input is not allowed" in capsys.readouterr().out
+
+
+def test_physical_measurement_requires_cpu_and_measurement_manifest_bindings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args, paths = _cli_fixture(tmp_path, measurement=host_measurement())
+
+    assert main(args) == 1
+    assert "manifest entry for 'cpu.log'" in capsys.readouterr().out
+
+    with paths["sums"].open("a", encoding="utf-8") as manifest:
+        manifest.write(f"{_digest(paths['cpu'])}  control/cpu.log\n")
+    assert main(args) == 1
+    assert "manifest entry for 'measurement.json'" in capsys.readouterr().out
+
+    with paths["sums"].open("a", encoding="utf-8") as manifest:
+        manifest.write(
+            f"{_digest(paths['measurement'])}  physical/measurement.json\n"
+        )
+    assert main(args) == 0
+    written = json.loads(paths["json_output"].read_text(encoding="utf-8"))
+    assert written["status"] == "CPU_COMPETITIVE_PASS"
+    assert written["claim_allowed"] is True

@@ -76,6 +76,8 @@ def build_cpu_control_report(
             f"expected cpu_baseline_model={CPU_MODEL}"
         )
     threads = _positive_int(cpu, "threads", source="CPU evidence")
+    if threads != 1:
+        raise CpuControlError("CPU evidence: threads must equal 1")
     materialized = _positive_float(
         cpu, "best_materialized_cpu_mtrigrams_s", source="CPU evidence"
     )

@@ -3,3 +3,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .venv/
+hardware/build/
+fpga/ulx3s-85f/build/
+fpga/ulx3s-85f/build-75mhz/

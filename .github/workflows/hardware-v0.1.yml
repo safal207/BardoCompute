@@ -44,11 +44,21 @@ on:
 permissions:
   contents: read
 
+env:
+  BARDO_SOURCE_SHA: "${{ github.event.pull_request.head.sha || github.sha }}"
+
 jobs:
   reference-contract:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Assert exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -62,11 +72,25 @@ jobs:
           tests/test_fpga_harness.py
           tests/test_cpu_control.py
           tests/test_hardware_claims.py
+      - name: Reassert exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
+          git diff --quiet
+          git diff --cached --quiet
 
   rtl:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Assert exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
       - name: Install open-source RTL tools
         run: |
           sudo apt-get update
@@ -77,11 +101,26 @@ jobs:
         run: make -C hardware synth
       - name: Equal-input CPU baseline smoke
         run: make -C hardware cpu-smoke
+      - name: Record exact-source CI provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
+          git diff --quiet
+          git diff --cached --quiet
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'source_sha=%s\n' "$BARDO_SOURCE_SHA"
+            printf 'workflow_ref=%s\n' "$GITHUB_WORKFLOW_REF"
+            printf 'workflow_sha=%s\n' "${{ github.workflow_sha }}"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > hardware/build/ci-provenance.txt
       - name: Upload RTL evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bardo-tx1-hardware-evidence-${{ github.run_id }}
+          name: bardo-tx1-hardware-evidence-${{ env.BARDO_SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: hardware/build/
           if-no-files-found: warn
           retention-days: 14
@@ -90,6 +129,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Assert exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
       - name: Install pinned open-source FPGA toolchain
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
@@ -97,10 +143,17 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and time native 25 MHz ULX3S-85F bitstream
         run: make -C fpga/ulx3s-85f all
+      - name: Verify listed native pre-gate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd fpga/ulx3s-85f && sha256sum --check build/SHA256SUMS)
       - name: Build same-semantics CPU control
         run: make -C hardware cpu-smoke
       - name: Reject weak CPU controls and record bounded ratios
+        shell: bash
         run: |
+          set -euo pipefail
           PYTHONPATH=src python3 -m bardocompute.cpu_control \
             --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
             --cpu-evidence hardware/build/cpu-baseline.log \
@@ -109,11 +162,14 @@ jobs:
           grep -Fqx 'cpu_control_gate=pass' fpga/ulx3s-85f/build/cpu-control.log
           grep -Fqx 'cpu_competition_status=unresolved' fpga/ulx3s-85f/build/cpu-control.log
       - name: Gate native-profile CPU-competition claims
+        shell: bash
         run: |
+          set -euo pipefail
           PYTHONPATH=src python3 -m bardocompute.hardware_claims \
             --fpga-evidence fpga/ulx3s-85f/build/evidence.txt \
             --cpu-evidence hardware/build/cpu-baseline.log \
             --nextpnr-report fpga/ulx3s-85f/build/nextpnr-report.json \
+            --bitstream fpga/ulx3s-85f/build/bardo_tx1_ulx3s_bench.bit \
             --sha256s fpga/ulx3s-85f/build/SHA256SUMS \
             --json-output fpga/ulx3s-85f/build/claim-gate.json \
             --markdown-output fpga/ulx3s-85f/build/claim-gate.md \
@@ -122,11 +178,26 @@ jobs:
           grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build/claim-gate.log
           grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build/claim-gate.log
           cp hardware/build/cpu-baseline.log fpga/ulx3s-85f/build/cpu-baseline.log
+      - name: Reassert exact source revision and record CI provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
+          git diff --quiet
+          git diff --cached --quiet
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'source_sha=%s\n' "$BARDO_SOURCE_SHA"
+            printf 'workflow_ref=%s\n' "$GITHUB_WORKFLOW_REF"
+            printf 'workflow_sha=%s\n' "${{ github.workflow_sha }}"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > fpga/ulx3s-85f/build/ci-provenance.txt
       - name: Upload native-profile place-and-route evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bardo-tx1-ulx3s-85f-25mhz-${{ github.run_id }}
+          name: bardo-tx1-ulx3s-85f-25mhz-${{ env.BARDO_SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: fpga/ulx3s-85f/build/
           if-no-files-found: warn
           retention-days: 14
@@ -135,6 +206,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Assert exact source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
       - name: Install pinned open-source FPGA toolchain
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
@@ -142,6 +220,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Generate PLL and build 75 MHz ULX3S-85F bitstream
         run: make -C fpga/ulx3s-85f all-75
+      - name: Verify listed PLL-profile pre-gate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd fpga/ulx3s-85f && sha256sum --check build-75mhz/SHA256SUMS)
       - name: Assert explicit PLL profile boundary
         run: |
           grep -Fqx 'profile=pll_25_to_75mhz' fpga/ulx3s-85f/build-75mhz/evidence.txt
@@ -152,7 +235,9 @@ jobs:
       - name: Build same-semantics CPU control
         run: make -C hardware cpu-smoke
       - name: Reject weak CPU controls and record bounded PLL-profile ratios
+        shell: bash
         run: |
+          set -euo pipefail
           PYTHONPATH=src python3 -m bardocompute.cpu_control \
             --fpga-evidence fpga/ulx3s-85f/build-75mhz/evidence.txt \
             --cpu-evidence hardware/build/cpu-baseline.log \
@@ -161,11 +246,14 @@ jobs:
           grep -Fqx 'cpu_control_gate=pass' fpga/ulx3s-85f/build-75mhz/cpu-control.log
           grep -Fqx 'cpu_competition_status=unresolved' fpga/ulx3s-85f/build-75mhz/cpu-control.log
       - name: Gate PLL-profile CPU-competition claims
+        shell: bash
         run: |
+          set -euo pipefail
           PYTHONPATH=src python3 -m bardocompute.hardware_claims \
             --fpga-evidence fpga/ulx3s-85f/build-75mhz/evidence.txt \
             --cpu-evidence hardware/build/cpu-baseline.log \
             --nextpnr-report fpga/ulx3s-85f/build-75mhz/nextpnr-report.json \
+            --bitstream fpga/ulx3s-85f/build-75mhz/bardo_tx1_ulx3s_bench_75.bit \
             --sha256s fpga/ulx3s-85f/build-75mhz/SHA256SUMS \
             --json-output fpga/ulx3s-85f/build-75mhz/claim-gate.json \
             --markdown-output fpga/ulx3s-85f/build-75mhz/claim-gate.md \
@@ -174,11 +262,26 @@ jobs:
           grep -Fqx 'status=CORE_ROOFLINE_ONLY' fpga/ulx3s-85f/build-75mhz/claim-gate.log
           grep -Fqx 'claim_allowed=false' fpga/ulx3s-85f/build-75mhz/claim-gate.log
           cp hardware/build/cpu-baseline.log fpga/ulx3s-85f/build-75mhz/cpu-baseline.log
+      - name: Reassert exact source revision and record CI provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BARDO_SOURCE_SHA"
+          git diff --quiet
+          git diff --cached --quiet
+          {
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'source_sha=%s\n' "$BARDO_SOURCE_SHA"
+            printf 'workflow_ref=%s\n' "$GITHUB_WORKFLOW_REF"
+            printf 'workflow_sha=%s\n' "${{ github.workflow_sha }}"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+          } > fpga/ulx3s-85f/build-75mhz/ci-provenance.txt
       - name: Upload PLL-profile place-and-route evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bardo-tx1-ulx3s-85f-75mhz-${{ github.run_id }}
+          name: bardo-tx1-ulx3s-85f-75mhz-${{ env.BARDO_SOURCE_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: fpga/ulx3s-85f/build-75mhz/
           if-no-files-found: warn
           retention-days: 14
