@@ -147,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd fpga/ulx3s-85f && sha256sum --check build/SHA256SUMS)
+          (cd fpga/ulx3s-85f/build && sha256sum --check SHA256SUMS)
       - name: Build same-semantics CPU control
         run: make -C hardware cpu-smoke
       - name: Reject weak CPU controls and record bounded ratios
@@ -224,7 +224,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          (cd fpga/ulx3s-85f && sha256sum --check build-75mhz/SHA256SUMS)
+          (cd fpga/ulx3s-85f/build-75mhz && sha256sum --check SHA256SUMS)
       - name: Assert explicit PLL profile boundary
         run: |
           grep -Fqx 'profile=pll_25_to_75mhz' fpga/ulx3s-85f/build-75mhz/evidence.txt
