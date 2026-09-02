@@ -87,11 +87,10 @@ evidence: $(BIT) resource-check tool-versions
 	  sha256sum $(REPORT) | awk '{print "nextpnr_report_sha256=" $$1}'; \
 	  cat $(BUILD)/resource-check.txt; \
 	} > $(BUILD)/timing-summary.txt
-	sha256sum \
-	  $(JSON) $(CONFIG) $(BIT) $(REPORT) \
-	  $(BUILD)/evidence.txt $(BUILD)/resource-check.txt \
-	  $(BUILD)/tool-versions.txt $(BUILD)/timing-summary.txt \
-	  > $(BUILD)/SHA256SUMS
+	( cd $(BUILD) && sha256sum \
+	  $(TOP).json $(TOP).config $(TOP).bit nextpnr-report.json \
+	  evidence.txt resource-check.txt tool-versions.txt timing-summary.txt \
+	  > SHA256SUMS )
 
 $(BUILD_75):
 	mkdir -p $(BUILD_75)
@@ -180,12 +179,11 @@ evidence-75: $(BIT_75) resource-check-75 tool-versions-75 sim-75
 	  sha256sum $(REPORT_75) | awk '{print "nextpnr_report_sha256=" $$1}'; \
 	  cat $(BUILD_75)/resource-check.txt; \
 	} > $(BUILD_75)/timing-summary.txt
-	sha256sum \
-	  $(PLL_75) $(JSON_75) $(CONFIG_75) $(BIT_75) $(REPORT_75) \
-	  $(BUILD_75)/evidence.txt $(BUILD_75)/resource-check.txt \
-	  $(BUILD_75)/tool-versions.txt $(BUILD_75)/timing-summary.txt \
-	  $(ORDERED_FOLD_SIM_LOG_75) $(HARNESS_SIM_LOG_75) \
-	  > $(BUILD_75)/SHA256SUMS
+	( cd $(BUILD_75) && sha256sum \
+	  bardo_tx1_pll75.v $(TOP_75).json $(TOP_75).config $(TOP_75).bit \
+	  nextpnr-report.json evidence.txt resource-check.txt tool-versions.txt \
+	  timing-summary.txt ordered-fold-sim.log harness-sim.log \
+	  > SHA256SUMS )
 
 all-75: bitstream-75 resource-check-75 evidence-75
 
