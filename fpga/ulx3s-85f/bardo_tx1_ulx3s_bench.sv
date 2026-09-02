@@ -1,0 +1,189 @@
+`timescale 1ns/1ps
+
+// BARDO-TX1 H1 board harness for ULX3S-85F.
+//
+// The board oscillator is 25 MHz. Seventy-one independent BARDO-TX1 lanes
+// therefore accept 1.775 billion trigrams/second at the core boundary. This is
+// intentionally a self-contained on-chip benchmark: a deterministic generator
+// feeds every sparse 9-bit bundle and an order-sensitive signature reducer
+// checks every output field. No host link is allowed to hide or limit the core.
+module bardo_tx1_ulx3s_bench (
+    input  wire       clk_25mhz,
+    output wire [7:0] led
+);
+    localparam integer LANES = 71;
+    localparam [63:0] SIGNATURE_SEED = 64'h424152444f545831; // "BARDOTX1"
+    localparam [63:0] EXPECTED_SIGNATURE = 64'hf8cc45c1e3244a5a;
+
+    // ECP5 configuration initializes registers, then this shift register holds
+    // the synchronous core reset active for eight board-clock cycles.
+    reg [7:0] reset_shift = 8'h00;
+    wire rst_n = reset_shift[7];
+
+    always @(posedge clk_25mhz)
+        reset_shift <= {reset_shift[6:0], 1'b1};
+
+    reg [8:0] stimulus_base;
+    wire [(LANES * 9) - 1:0] in_lines;
+    wire in_ready;
+    wire in_valid = rst_n;
+
+    genvar stimulus_lane;
+    generate
+        for (stimulus_lane = 0; stimulus_lane < LANES; stimulus_lane = stimulus_lane + 1) begin : generate_stimulus
+            wire [9:0] lane_value;
+            assign lane_value = {1'b0, stimulus_base} + stimulus_lane;
+            assign in_lines[(stimulus_lane * 9) +: 9] = lane_value[8:0];
+        end
+    endgenerate
+
+    always @(posedge clk_25mhz) begin
+        if (!rst_n)
+            stimulus_base <= 9'h000;
+        else if (in_valid && in_ready)
+            stimulus_base <= stimulus_base + 1'b1;
+    end
+
+    wire out_valid;
+    wire [LANES - 1:0] out_valid_mask;
+    wire [(LANES * 8) - 1:0] out_trigram_index;
+    wire [LANES - 1:0] out_policy_allow;
+    wire [(LANES * 9) - 1:0] out_settled_lines;
+    wire [LANES - 1:0] out_any_discontinuous;
+    wire [LANES - 1:0] out_any_transition;
+    wire [(LANES * 2) - 1:0] out_target_count;
+
+    // Output-side epoch identity. Because BARDO-TX1 is a one-item pipeline,
+    // epoch_position names the stimulus bundle represented by out_* now.
+    reg [8:0] epoch_position;
+
+    bardo_tx1 #(.LANES(LANES)) core (
+        .clk(clk_25mhz),
+        .rst_n(rst_n),
+        .in_valid(in_valid),
+        .in_ready(in_ready),
+        .in_lines(in_lines),
+        .out_valid(out_valid),
+        .out_ready(1'b1),
+        .out_valid_mask(out_valid_mask),
+        .out_trigram_index(out_trigram_index),
+        .out_policy_allow(out_policy_allow),
+        .out_settled_lines(out_settled_lines),
+        .out_any_discontinuous(out_any_discontinuous),
+        .out_any_transition(out_any_transition),
+        .out_target_count(out_target_count)
+    );
+
+    // One 32-bit semantic record per lane. The low nine bits bind each
+    // output to the deterministic input identity represented at this epoch.
+    // Each lane uses a distinct two-shift polynomial coefficient. XORing the
+    // resulting 64-bit terms is order-sensitive without multipliers or adders:
+    // for distinct lane coefficients, swapping unequal records changes the fold.
+    wire [(LANES * 32) - 1:0] lane_payload;
+    wire [(LANES * 64) - 1:0] lane_position_term;
+
+    genvar payload_lane;
+    generate
+        for (payload_lane = 0; payload_lane < LANES; payload_lane = payload_lane + 1) begin : generate_payload
+            localparam integer SHIFT_A =
+                (payload_lane < 32) ? 0 : ((payload_lane < 63) ? 1 : 2);
+            localparam integer SHIFT_B =
+                (payload_lane < 32) ? (payload_lane + 1)
+                : ((payload_lane < 63) ? (payload_lane - 30) : (payload_lane - 60));
+            wire [9:0] expected_lane_value;
+            wire [63:0] expanded_payload;
+
+            assign expected_lane_value = {1'b0, epoch_position} + payload_lane;
+            assign lane_payload[(payload_lane * 32) +: 32] = {
+                out_valid_mask[payload_lane],
+                out_target_count[(payload_lane * 2) +: 2],
+                out_any_transition[payload_lane],
+                out_any_discontinuous[payload_lane],
+                out_settled_lines[(payload_lane * 9) +: 9],
+                out_policy_allow[payload_lane],
+                out_trigram_index[(payload_lane * 8) +: 8],
+                expected_lane_value[8:0]
+            };
+            assign expanded_payload = {32'h00000000, lane_payload[(payload_lane * 32) +: 32]};
+            assign lane_position_term[(payload_lane * 64) +: 64] =
+                (expanded_payload << SHIFT_A) ^ (expanded_payload << SHIFT_B);
+        end
+    endgenerate
+
+    reg [63:0] cycle_fold;
+    integer fold_lane;
+    always @* begin
+        cycle_fold = 64'h0000000000000000;
+        for (fold_lane = 0; fold_lane < LANES; fold_lane = fold_lane + 1)
+            cycle_fold = cycle_fold ^ lane_position_term[(fold_lane * 64) +: 64];
+    end
+
+    reg [63:0] signature;
+    reg [31:0] epoch_count;
+    reg [24:0] heartbeat;
+    reg stream_started;
+    reg pass_latched;
+    reg fail_latched;
+
+    wire [63:0] signature_rotated = {signature[62:0], signature[63]};
+    wire [63:0] signature_next = signature_rotated
+        ^ cycle_fold
+        ^ {55'h00000000000000, epoch_position};
+
+    always @(posedge clk_25mhz) begin
+        if (!rst_n) begin
+            signature <= SIGNATURE_SEED;
+            epoch_position <= 9'h000;
+            epoch_count <= 32'h00000000;
+            heartbeat <= 25'h0000000;
+            stream_started <= 1'b0;
+            pass_latched <= 1'b0;
+            fail_latched <= 1'b0;
+        end else begin
+            heartbeat <= heartbeat + 1'b1;
+
+            // With output permanently ready and input permanently valid, a
+            // full one-item pipeline must never deassert ready or create a
+            // bubble after its first result.
+            if (!in_ready)
+                fail_latched <= 1'b1;
+            if (stream_started && !out_valid)
+                fail_latched <= 1'b1;
+
+            if (out_valid) begin
+                stream_started <= 1'b1;
+
+                if (epoch_position == 9'd511) begin
+                    if (signature_next == EXPECTED_SIGNATURE)
+                        pass_latched <= 1'b1;
+                    else
+                        fail_latched <= 1'b1;
+
+                    signature <= SIGNATURE_SEED;
+                    epoch_position <= 9'h000;
+                    epoch_count <= epoch_count + 1'b1;
+                end else begin
+                    signature <= signature_next;
+                    epoch_position <= epoch_position + 1'b1;
+                end
+            end
+        end
+    end
+
+    // LEDs remain useful without a host:
+    //   0 green-equivalent: at least one complete correct 512-cycle epoch
+    //   1: sticky failure
+    //   2: stream has started
+    //   3/4: current valid/ready handshake
+    //   5: epoch toggle
+    //   6/7: heartbeat
+    assign led[0] = pass_latched && !fail_latched;
+    assign led[1] = fail_latched;
+    assign led[2] = stream_started;
+    assign led[3] = out_valid;
+    assign led[4] = in_ready;
+    assign led[5] = epoch_count[0];
+    assign led[6] = heartbeat[23];
+    assign led[7] = heartbeat[24];
+
+endmodule
