@@ -127,6 +127,10 @@ the manifest. Paths must be canonical, relative POSIX paths; traversal,
 ambiguous components, backslashes, and duplicates are rejected. Every supplied
 claim-input leaf is also rejected if it is a direct symlink.
 
+Manifest entries are relative to the extracted evidence-bundle root, so an
+independent consumer can verify the archive directly with
+`sha256sum --check SHA256SUMS` after extraction.
+
 `timing-summary.txt` is rendered from the final nextpnr JSON and
 `resource-check.txt`, not scraped from transient nextpnr console output. The
 75 MHz manifest additionally binds `ordered-fold-sim.log` and
