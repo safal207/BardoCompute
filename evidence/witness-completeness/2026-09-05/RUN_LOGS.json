@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "archive_origin": "Bardo_Evidence_Completeness_v1.zip",
+  "origin_sha256": "253bc850522d8fef53c411926bf0a9c2e6332a44040f89fe8cbf61a5ecb4c73d",
+  "tested_code_commit": "6d004a20ae23fca9ad525693607ab8cbd7d903dd",
+  "note": "Historical logs copied from the original research bundle, not a fresh run. Values are the exact UTF-8 source text. Complete per-run result/counterexample files and original CI ZIP containers remain in that bundle and the referenced CI artifacts.",
+  "files": {
+    "evidence/full_source_lab_tests.txt": {
+      "bytes": 980,
+      "sha256": "7125bc7994ac1f469d79f8c2ebdb36074c1a61734d90e29be51ded8ef1253947",
+      "text": "test_all_512_single_lane_serialization_roundtrips (test_lab.LabChecks.test_all_512_single_lane_serialization_roundtrips) ... ok\ntest_bit_position_boundaries (test_lab.LabChecks.test_bit_position_boundaries) ... ok\ntest_bitmap_and_raw_byte_widths (test_lab.LabChecks.test_bitmap_and_raw_byte_widths) ... ok\ntest_bitmap_cannot_answer_every_other_predicate (test_lab.LabChecks.test_bitmap_cannot_answer_every_other_predicate) ... ok\ntest_four_decoys_identical_features_opposite_labels (test_lab.LabChecks.test_four_decoys_identical_features_opposite_labels) ... ok\ntest_labels_and_focus_not_read_by_encoder (test_lab.LabChecks.test_labels_and_focus_not_read_by_encoder) ... ok\ntest_single_fault_control_distinguishable (test_lab.LabChecks.test_single_fault_control_distinguishable) ... ok\ntest_three_decoys_distinguishable (test_lab.LabChecks.test_three_decoys_distinguishable) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.007s\n\nOK\n"
+    },
+    "evidence/full_source_upstream_tests.txt": {
+      "bytes": 98,
+      "sha256": "d6b818a379e6a77517c3301ee64d9fc0361f0d384f662b3f3a1d8bea2d848e8a",
+      "text": ".....                                                                    [100%]\n5 passed in 1.08s\n"
+    },
+    "evidence/ci_py311/head.txt": {
+      "bytes": 41,
+      "sha256": "811065d6cdf688b63b02370f4e1476f5cb549eaeab033109734fa90ea163a127",
+      "text": "6d004a20ae23fca9ad525693607ab8cbd7d903dd\n"
+    },
+    "evidence/ci_py311/python.txt": {
+      "bytes": 15,
+      "sha256": "a653f483c16545a1c15153c784d7cf4e2d13dcda5a0668977e56d27b98c41eb3",
+      "text": "Python 3.11.16\n"
+    },
+    "evidence/ci_py311/packages.txt": {
+      "bytes": 184,
+      "sha256": "d913a1a280a8c96c30407cbeeabd1d6b079998887e08b2dcfa05645ec0a208ae",
+      "text": "-e git+https://github.com/safal207/BardoCompute@6d004a20ae23fca9ad525693607ab8cbd7d903dd#egg=bardocompute\niniconfig==2.3.0\npackaging==26.3\npluggy==1.6.0\nPygments==2.21.0\npytest==9.1.1\n"
+    },
+    "evidence/ci_py311/lab_tests.log": {
+      "bytes": 980,
+      "sha256": "ce89e94aae564c57054915d35ce5dc9bfc08cde8f15ae2940dc6216fd1dd1715",
+      "text": "test_all_512_single_lane_serialization_roundtrips (test_lab.LabChecks.test_all_512_single_lane_serialization_roundtrips) ... ok\ntest_bit_position_boundaries (test_lab.LabChecks.test_bit_position_boundaries) ... ok\ntest_bitmap_and_raw_byte_widths (test_lab.LabChecks.test_bitmap_and_raw_byte_widths) ... ok\ntest_bitmap_cannot_answer_every_other_predicate (test_lab.LabChecks.test_bitmap_cannot_answer_every_other_predicate) ... ok\ntest_four_decoys_identical_features_opposite_labels (test_lab.LabChecks.test_four_decoys_identical_features_opposite_labels) ... ok\ntest_labels_and_focus_not_read_by_encoder (test_lab.LabChecks.test_labels_and_focus_not_read_by_encoder) ... ok\ntest_single_fault_control_distinguishable (test_lab.LabChecks.test_single_fault_control_distinguishable) ... ok\ntest_three_decoys_distinguishable (test_lab.LabChecks.test_three_decoys_distinguishable) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.008s\n\nOK\n"
+    },
+    "evidence/ci_py311/upstream_tests.log": {
+      "bytes": 98,
+      "sha256": "bb9e22c69cb497bdd217813b07e5630c85feff6925f0d5b6d679a8d50e8d9495",
+      "text": ".....                                                                    [100%]\n5 passed in 1.13s\n"
+    },
+    "evidence/ci_py313/head.txt": {
+      "bytes": 41,
+      "sha256": "811065d6cdf688b63b02370f4e1476f5cb549eaeab033109734fa90ea163a127",
+      "text": "6d004a20ae23fca9ad525693607ab8cbd7d903dd\n"
+    },
+    "evidence/ci_py313/python.txt": {
+      "bytes": 15,
+      "sha256": "322f765b04793d55160c8788550761630087e4847a77ed7a1090d79791f73c3b",
+      "text": "Python 3.13.15\n"
+    },
+    "evidence/ci_py313/packages.txt": {
+      "bytes": 184,
+      "sha256": "d913a1a280a8c96c30407cbeeabd1d6b079998887e08b2dcfa05645ec0a208ae",
+      "text": "-e git+https://github.com/safal207/BardoCompute@6d004a20ae23fca9ad525693607ab8cbd7d903dd#egg=bardocompute\niniconfig==2.3.0\npackaging==26.3\npluggy==1.6.0\nPygments==2.21.0\npytest==9.1.1\n"
+    },
+    "evidence/ci_py313/lab_tests.log": {
+      "bytes": 980,
+      "sha256": "e46953f33e9637fe3a5cd9007bc926ef024b6a7d171cd6b30fa50e6ac639c0f8",
+      "text": "test_all_512_single_lane_serialization_roundtrips (test_lab.LabChecks.test_all_512_single_lane_serialization_roundtrips) ... ok\ntest_bit_position_boundaries (test_lab.LabChecks.test_bit_position_boundaries) ... ok\ntest_bitmap_and_raw_byte_widths (test_lab.LabChecks.test_bitmap_and_raw_byte_widths) ... ok\ntest_bitmap_cannot_answer_every_other_predicate (test_lab.LabChecks.test_bitmap_cannot_answer_every_other_predicate) ... ok\ntest_four_decoys_identical_features_opposite_labels (test_lab.LabChecks.test_four_decoys_identical_features_opposite_labels) ... ok\ntest_labels_and_focus_not_read_by_encoder (test_lab.LabChecks.test_labels_and_focus_not_read_by_encoder) ... ok\ntest_single_fault_control_distinguishable (test_lab.LabChecks.test_single_fault_control_distinguishable) ... ok\ntest_three_decoys_distinguishable (test_lab.LabChecks.test_three_decoys_distinguishable) ... ok\n\n----------------------------------------------------------------------\nRan 8 tests in 0.005s\n\nOK\n"
+    },
+    "evidence/ci_py313/upstream_tests.log": {
+      "bytes": 98,
+      "sha256": "e819659de90e12fb3211cb456e852f09b2e31050c8dda99a8d3db5109b2ab840",
+      "text": ".....                                                                    [100%]\n5 passed in 0.70s\n"
+    }
+  }
+}

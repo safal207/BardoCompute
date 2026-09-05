@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "kind": "archival-publication-not-a-test-run",
+  "date": "2026-09-05",
+  "repository": "safal207/BardoCompute",
+  "branch": "research/witness-completeness-v1",
+  "pull_request": 44,
+  "head_before_publication": "a5fd564e30fd2154fc7fddde57ea39de1744b5ef",
+  "source_commit": "0b9da9e61eed562797473c8a841902247a2aa946",
+  "tested_experimental_code_commit": "6d004a20ae23fca9ad525693607ab8cbd7d903dd",
+  "source_archive": {
+    "name": "Bardo_Evidence_Completeness_v1.zip",
+    "bytes": 427693,
+    "sha256": "253bc850522d8fef53c411926bf0a9c2e6332a44040f89fe8cbf61a5ecb4c73d",
+    "original_manifest_entries_verified": 61,
+    "entire_zip_mirrored_in_git": false
+  },
+  "files": [
+    {
+      "path": "INVESTOR_BRIEF_EN.md",
+      "bytes": 2128,
+      "sha256": "52c2cd4608ac8a9b152d505ca010a346c4a6199678d0909855b21800fabba9f0",
+      "git_blob_sha1": "df60b7c4e816e67211b4ee5be9030a3a65a42e1a"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3817,
+      "sha256": "07c7da24a6cda901e076af7a7d15d5acabb196e43adfc79c9139d23f427bdea1",
+      "git_blob_sha1": "9dfaffc02df5405be9b4d900c1771c1bdc3f11b3"
+    },
+    {
+      "path": "REPORT_RU.md",
+      "bytes": 11251,
+      "sha256": "325dceb3046c524bc990d14d28a17527efec70a4951fbe4dc841f3598b01dc67",
+      "git_blob_sha1": "7ef2550d280cf782dbbe72287d29cc0c9de25a21"
+    },
+    {
+      "path": "RUN_LOGS.json",
+      "bytes": 6314,
+      "sha256": "d8de8a38633a5bfa5c6f8a88daa1e1b178decf3351486cfc5e1fffcf392be2fe",
+      "git_blob_sha1": "b171bd23b013f7dd037ab895a4339408ce8f2229"
+    },
+    {
+      "path": "result.json",
+      "bytes": 4328,
+      "sha256": "c3d47b7a66fd03154fd5e981734def4354898ce9e68a029dfc154f44d17434b9",
+      "git_blob_sha1": "043227559aeb46b67893f9f7016e1f535a0fe0e0"
+    }
+  ],
+  "notes": [
+    "Paths are relative to this directory; this manifest excludes itself.",
+    "Reports and local result are exact original bytes. RUN_LOGS.json is a lossless JSON container for 12 original UTF-8 texts, with per-text checksums.",
+    "Only result.json formatting changed relative to the previously published aggregate; no measurement values changed.",
+    "Full representative frame JSON, full per-run experiment outputs and original CI ZIP containers remain in the source bundle and CI artifacts, not this publication.",
+    "This publication does not change executable research code, rerun tests, grant review approval or merge a branch."
+  ]
+}

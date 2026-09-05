@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "experiment": "bardo-witness-completeness-v1",
+  "source_commit": "0b9da9e61eed562797473c8a841902247a2aa946",
+  "source_mode": "FULL_PINNED_UPSTREAM",
+  "source_modules": {
+    "logos_learning.py": {
+      "git_blob": "0720a774f83c10b5ff6f9cb43147056ab9d22046",
+      "sha256": "f769d91a6812ddb3f58d7844f68b38e75f555254d837d58fcb7e4a715f5b0b45",
+      "expected_blob": "0720a774f83c10b5ff6f9cb43147056ab9d22046"
+    },
+    "hardware_contract.py": {
+      "git_blob": "74c58cd44a8c492ac734180bf79d3e56361fdafb",
+      "sha256": "b6549e052614c945def01da9046c17b1c770d55ec2e5e97fdb113e8a31ad1b0d",
+      "expected_blob": "74c58cd44a8c492ac734180bf79d3e56361fdafb"
+    }
+  },
+  "python": "3.13.5",
+  "design": {
+    "synthetic": true,
+    "seed_list": [
+      11,
+      29,
+      47
+    ],
+    "pairs_per_seed_per_load": 128,
+    "loads": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      8,
+      16,
+      32
+    ],
+    "labels": "invalid exists in critical outer region",
+    "stress": "right critical fault vs late ordinary fault; earlier ordinary invalid distractors",
+    "training_performed": false,
+    "timings_are_not_a_speed_benchmark": true
+  },
+  "overload": [
+    {
+      "ordinary_distractors": 0,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 0,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 1.0
+    },
+    {
+      "ordinary_distractors": 1,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 0,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 1.0
+    },
+    {
+      "ordinary_distractors": 2,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 0,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 1.0
+    },
+    {
+      "ordinary_distractors": 3,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 0,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 1.0
+    },
+    {
+      "ordinary_distractors": 4,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 384,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 0.5
+    },
+    {
+      "ordinary_distractors": 5,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 384,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 0.5
+    },
+    {
+      "ordinary_distractors": 8,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 384,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 0.5
+    },
+    {
+      "ordinary_distractors": 16,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 384,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 0.5
+    },
+    {
+      "ordinary_distractors": 32,
+      "pairs": 384,
+      "frames": 768,
+      "opposite_label_hybrid_collisions": 384,
+      "raw_feature_collisions": 0,
+      "bitmap_errors": 0,
+      "paired_accuracy_upper_bound": 0.5
+    }
+  ],
+  "total_pairs": 3456,
+  "total_frames": 6912,
+  "layout_permutations": {
+    "layouts": 720,
+    "collisions": 48
+  },
+  "bitmap": {
+    "full_8_lane_state_policy_cases": 65536,
+    "random_71_lane_state_policy_cases": 100000,
+    "errors": 0,
+    "bitmap_bytes": 9,
+    "full_tx1_bytes": 205,
+    "raw_payload_reduction_fraction": 0.9560975609756097,
+    "scope": "any subset query over lane validity only; source is trusted; no cryptographic certificate",
+    "other_predicate_counterexample_confirmed": true,
+    "one_bit_policy_drift_counterexample_confirmed": true
+  },
+  "non_claims": [
+    "No production traces or FPGA execution",
+    "No universal learning/CPU advantage",
+    "No financial savings or investor demand measured",
+    "Bitmap is a conventional exact baseline, not a novel algorithm",
+    "No authentication, completeness-of-source or freshness proof",
+    "Original single-fault benchmark not invalidated"
+  ],
+  "elapsed_seconds": 9.616812213000003,
+  "status": "PASS"
+}

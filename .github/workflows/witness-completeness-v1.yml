@@ -1,0 +1,63 @@
+name: BARDO witness completeness v1
+on:
+  push:
+    branches: [research/witness-completeness-v1]
+    paths:
+      - experiments/witness_completeness_v1/**
+      - .github/workflows/witness-completeness-v1.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  falsification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify unchanged original implementation
+        run: git diff --exit-code 0b9da9e61eed562797473c8a841902247a2aa946 -- src/bardocompute/
+      - name: Install test runner
+        run: python -m pip install -e . pytest
+      - name: Original learning checks
+        shell: bash
+        run: |
+          mkdir -p evidence/witness-completeness
+          python -m pytest -q tests/test_logos_learning.py 2>&1 | tee evidence/witness-completeness/upstream_tests.log
+      - name: Experiment self-checks
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s experiments/witness_completeness_v1 -p test_lab.py -v 2>&1 | tee evidence/witness-completeness/lab_tests.log
+      - name: Full-source stress experiment
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          python experiments/witness_completeness_v1/run_lab.py --output evidence/witness-completeness 2>&1 | tee evidence/witness-completeness/run.log
+          python -c "import json; r=json.load(open('evidence/witness-completeness/result.json')); assert r['source_mode']=='FULL_PINNED_UPSTREAM'; assert all(x['bitmap_errors']==0 for x in r['overload'])"
+      - name: Preserve reproducible source and environment
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence/witness-completeness
+          git rev-parse HEAD > evidence/witness-completeness/head.txt
+          python --version > evidence/witness-completeness/python.txt
+          python -m pip freeze > evidence/witness-completeness/packages.txt
+          tar -czf evidence/witness-completeness/source.tar.gz src/bardocompute experiments/witness_completeness_v1 tests/test_logos_learning.py pyproject.toml LICENSE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bardo-witness-completeness-py${{ matrix.python-version }}-${{ github.run_id }}
+          path: evidence/witness-completeness/
+          if-no-files-found: error
+          retention-days: 30

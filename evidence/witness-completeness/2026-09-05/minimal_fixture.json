@@ -1,0 +1,16 @@
+{
+  "description":"Minimal neutral-background counterexample; all lane indices are zero-based",
+  "lane_count":71,
+  "default_trigram_lines":[0,0,0],
+  "invalid_trigram_lines":[1,0,0],
+  "ordinary_invalid_lanes_in_both":[18,19,20,21],
+  "negative_extra_invalid_lane":50,
+  "positive_extra_invalid_lane":60,
+  "critical_region_inclusive_ranges":[[0,17],[53,70]],
+  "selected_witness_lanes_in_both":[18,19,20,21],
+  "expected_negative_label":0,
+  "expected_positive_label":1,
+  "expected_hybrid_feature_equality":true,
+  "expected_raw_feature_equality":false,
+  "scope":"Learner feature vectors only. Complete wire-record or ordered-root equality is not asserted."
+}

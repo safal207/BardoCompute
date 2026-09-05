@@ -1,0 +1,26 @@
+Evidence index, not a replacement for full raw CI logs.
+Tested commit: 6d004a20ae23fca9ad525693607ab8cbd7d903dd
+Run: https://github.com/safal207/BardoCompute/actions/runs/33943876410
+
+Python 3.11.16:
+Original learning tests: 5 passed in 1.13s
+Lab tests: Ran 8 tests in 0.008s; OK
+Experiment: evidence_completeness_lab=pass
+
+Python 3.13.15:
+Original learning tests: 5 passed in 0.70s
+Lab tests: Ran 8 tests in 0.005s; OK
+Experiment: evidence_completeness_lab=pass
+
+Lab test names:
+test_all_512_single_lane_serialization_roundtrips
+test_bit_position_boundaries
+test_bitmap_and_raw_byte_widths
+test_bitmap_cannot_answer_every_other_predicate
+test_four_decoys_identical_features_opposite_labels
+test_labels_and_focus_not_read_by_encoder
+test_single_fault_control_distinguishable
+test_three_decoys_distinguishable
+
+Timings are runner-dependent execution records, not controlled speed comparisons.
+Original full training benchmark not rerun. Finite subcase counts are not independent security guarantees.
