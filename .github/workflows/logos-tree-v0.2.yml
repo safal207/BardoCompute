@@ -1,0 +1,100 @@
+name: BARDO LOGOS tree comparison v0.2
+
+on:
+  pull_request:
+    paths:
+      - "src/bardocompute/logos_tree.py"
+      - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/packed.py"
+      - "native/logos_tree_cpu_benchmark.c"
+      - "tests/test_logos_tree.py"
+      - "docs/logos-tree-v0.2.md"
+      - ".github/workflows/logos-tree-v0.2.yml"
+  push:
+    branches:
+      - research/v0.2-logos-tree-benchmark
+    paths:
+      - "src/bardocompute/logos_tree.py"
+      - "src/bardocompute/hardware_contract.py"
+      - "src/bardocompute/packed.py"
+      - "native/logos_tree_cpu_benchmark.c"
+      - "tests/test_logos_tree.py"
+      - "docs/logos-tree-v0.2.md"
+      - ".github/workflows/logos-tree-v0.2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install package and test runner
+        run: python -m pip install -e . pytest
+      - name: Falsify ordering, bounded width, and aggregate equivalence
+        run: python -m pytest -q tests/test_logos_tree.py
+      - name: Record Python reduction-only comparison
+        run: |
+          mkdir -p build/logos-tree
+          python -m bardocompute.logos_tree \
+            --lanes 71 \
+            --frames 256 \
+            --repeats 5 \
+            --json-output build/logos-tree/python-report.json \
+            --markdown-output build/logos-tree/python-report.md \
+            2>&1 | tee build/logos-tree/python-benchmark.log
+          grep -Fqx 'logos_benchmark=pass' build/logos-tree/python-benchmark.log
+          grep -Fqx 'lanes=71' build/logos-tree/python-benchmark.log
+          grep -Fqx 'balanced_tree_depth=7' build/logos-tree/python-benchmark.log
+          grep -Fqx 'output_reduction_ratio=12.757812' build/logos-tree/python-benchmark.log
+      - name: Upload Python evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-logos-python-${{ github.run_id }}
+          path: build/logos-tree/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-cpu-comparison:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile strict native comparison
+        run: |
+          mkdir -p build/logos-tree
+          cc -O3 -march=native -mtune=native -std=c11 \
+            -Wall -Wextra -Werror \
+            native/logos_tree_cpu_benchmark.c \
+            -o build/logos-tree/logos_tree_cpu_benchmark
+      - name: Compare materialization, XOR, linear LOGOS, and balanced LOGOS
+        run: |
+          build/logos-tree/logos_tree_cpu_benchmark 50000 5 71 \
+            2>&1 | tee build/logos-tree/native-benchmark.log
+          grep -Fqx 'correct=true' build/logos-tree/native-benchmark.log
+          grep -Fqx 'lanes=71' build/logos-tree/native-benchmark.log
+          grep -Fqx 'full_result_bits_per_frame=1633' build/logos-tree/native-benchmark.log
+          grep -Fqx 'logos_result_bits_per_frame=128' build/logos-tree/native-benchmark.log
+          grep -Fqx 'flat_dependency_depth=71' build/logos-tree/native-benchmark.log
+          grep -Fqx 'balanced_tree_depth=7' build/logos-tree/native-benchmark.log
+          grep -Fqx 'flat_xor_permutation_collision=true' build/logos-tree/native-benchmark.log
+          grep -Fqx 'ordered_tree_swap_detected=true' build/logos-tree/native-benchmark.log
+          grep -Fqx 'baseline_ordered_root=9be74091c16044de' build/logos-tree/native-benchmark.log
+          grep -Fqx 'swapped_ordered_root=69b5d0de81c00d8f' build/logos-tree/native-benchmark.log
+          grep -Eq '^materialize_mlanes_s=[0-9]+([.][0-9]+)?$' build/logos-tree/native-benchmark.log
+          grep -Eq '^flat_xor_mlanes_s=[0-9]+([.][0-9]+)?$' build/logos-tree/native-benchmark.log
+          grep -Eq '^linear_ordered_logos_mlanes_s=[0-9]+([.][0-9]+)?$' build/logos-tree/native-benchmark.log
+          grep -Eq '^balanced_ordered_logos_mlanes_s=[0-9]+([.][0-9]+)?$' build/logos-tree/native-benchmark.log
+      - name: Upload native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bardo-logos-native-${{ github.run_id }}
+          path: build/logos-tree/
+          if-no-files-found: error
+          retention-days: 14
