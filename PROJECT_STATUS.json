@@ -1,0 +1,18 @@
+{
+  "schema": "research-repository-status/1",
+  "repository": "safal207/BardoCompute",
+  "observed_on": "2026-09-05",
+  "default_branch": "main",
+  "baseline_main_sha": "0eca048870cf36217e1d8f9dc4f5de30fbe58169",
+  "publication_scope": "documentation and branch inventory only; no code promotion",
+  "production_ready": false,
+  "branch_snapshot": "BRANCH_SNAPSHOT_2026-09-05.tsv",
+  "snapshot_branch_count": 34,
+  "tracks": [
+    {"id":"tx1-reference","source_sha":"f50490e8194f0e5c7aeeba251f2575eb8155ed54","availability":"pinned research source","evidence":"PR 40; CORE_ROOFLINE_ONLY","merge_target":"research/v0.42-same-host-dual-interpreter","on_baseline_main":false,"rerun_during_organization":false},
+    {"id":"logos-learning","source_sha":"0b9da9e61eed562797473c8a841902247a2aa946","availability":"draft PR 42","evidence":"synthetic learning only","on_baseline_main":false,"rerun_during_organization":false}
+  ],
+  "non_claims": ["production processor", "physical-board execution", "CPU superiority", "automatic integration of research branches"],
+  "branch_deletions": [],
+  "review_of_linked_code": "not changed by documentation publication"
+}
